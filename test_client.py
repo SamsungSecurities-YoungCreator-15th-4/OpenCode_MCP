@@ -34,4 +34,5 @@ async def main() -> None:
             print("list_files ->", [c.text for c in r2.content])
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())

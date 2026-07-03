@@ -19,3 +19,13 @@ def test_list_files_rejects_non_directory(tmp_path):
     result = mcp_server.list_files(str(missing))
     assert len(result) == 1
     assert result[0].startswith("error:")
+
+
+def test_list_files_handles_oserror(tmp_path, monkeypatch):
+    def raise_denied(self):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(mcp_server.Path, "iterdir", raise_denied)
+    result = mcp_server.list_files(str(tmp_path))
+    assert len(result) == 1
+    assert result[0].startswith("error: cannot list")

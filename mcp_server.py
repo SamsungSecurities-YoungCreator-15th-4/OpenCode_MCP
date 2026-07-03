@@ -23,7 +23,10 @@ def list_files(directory: str = ".") -> list[str]:
     p = Path(directory).expanduser()
     if not p.is_dir():
         return [f"error: {directory} is not a directory"]
-    return sorted(entry.name for entry in p.iterdir())
+    try:
+        return sorted(entry.name for entry in p.iterdir())
+    except OSError as e:
+        return [f"error: cannot list {directory}: {e}"]
 
 
 if __name__ == "__main__":
