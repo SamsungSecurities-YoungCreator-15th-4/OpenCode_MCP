@@ -14,4 +14,4 @@
 ## 문제가 생기면
 
 협업 과정에서 갈등이나 문제가 생기면 팀 회의 안건으로 올리거나
-**team4youngcreator@gmail.com** 으로 알려 주세요.
+**team4youngcreator@gmail.com**으로 알려 주세요.
