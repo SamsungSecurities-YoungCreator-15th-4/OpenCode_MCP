@@ -1,0 +1,46 @@
+name: CI
+
+# PR이 main/develop 대상으로 열리거나, main/develop에 푸시될 때 자동 체크한다.
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+# 모든 job에 대한 기본 GITHUB_TOKEN 권한을 최소(읽기 전용)로 제한한다.
+# 우리 CI는 lint·test만 수행하므로 contents: read 로 충분하다.
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install ruff
+      # 파이썬 코드가 아직 없는 초기 단계에서도 CI가 깨지지 않도록 ruff check . 사용
+      - run: ruff check .
+
+  test:
+    name: Test (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install pytest
+      # 테스트가 아직 없으면(수집 0건, exit code 5) 통과로 처리한다.
+      - name: Run pytest
+        run: |
+          pytest || rc=$?
+          if [ "${rc:-0}" -eq 5 ]; then echo "no tests collected yet — skipping"; exit 0; fi
+          exit "${rc:-0}"
