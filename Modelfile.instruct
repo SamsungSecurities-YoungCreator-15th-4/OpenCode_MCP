@@ -1,0 +1,2 @@
+FROM qwen3:4b-instruct
+PARAMETER num_ctx 16384
