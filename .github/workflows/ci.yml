@@ -30,10 +30,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # cache: pip 은 requirements.txt/pyproject.toml 이 생긴 뒤에 켠다
+      # (의존성 파일이 없으면 setup-python 캐시 단계가 에러를 낸다)
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: pip
       - name: Install dependencies
         run: |
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
