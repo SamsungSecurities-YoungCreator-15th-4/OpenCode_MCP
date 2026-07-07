@@ -41,21 +41,19 @@ REQUIRED_KEYS = {
 }
 
 
-def _embedding_available() -> bool:
-    """실제 임베딩 한 번을 시도해 가능 여부를 판정한다.
+def _check_embedding_or_skip() -> None:
+    """임베딩 가능 여부를 '테스트 실행 시점에' 확인해 불가하면 스킵한다.
 
+    skipif 데코레이터로 수집(collection) 단계에서 Ollama에 붙으면 무관한 테스트
+    실행 때도 전체 수집이 지연될 수 있어, 함수 내부에서 동적으로 확인한다.
     Ollama 미기동뿐 아니라 bge-m3 모델 미설치까지 모두 '불가'로 보고 스킵한다.
     """
     try:
-        return len(embed_texts(["ping"])) == 1
+        if len(embed_texts(["ping"])) == 1:
+            return
     except Exception:
-        return False
-
-
-requires_embedding = pytest.mark.skipif(
-    not _embedding_available(),
-    reason="bge-m3 임베딩 불가 (Ollama 미기동 또는 모델 미설치) — 임베딩 의존 테스트 스킵",
-)
+        pass
+    pytest.skip("bge-m3 임베딩 불가 (Ollama 미기동 또는 모델 미설치) — 스킵")
 
 
 # --- 1. 조항 경계 인식 + 메타데이터 스키마 -------------------------------------
@@ -128,8 +126,8 @@ def test_reciprocal_rank_fusion_math_and_keys():
 # --- 3. build_index → search 가 예외 없이 돌고 의미상 근접 청크가 상위 --------
 
 
-@requires_embedding
 def test_pipeline_search_returns_relevant_chunk():
+    _check_embedding_or_skip()
     from compliance.rag import pipeline
 
     chunks = chunker.chunk_articles(DUMMY_CORPUS, source="KOFIA_표준내부통제기준")
@@ -145,8 +143,8 @@ def test_pipeline_search_returns_relevant_chunk():
 # --- 재구성(build_index) 시 영속 컬렉션이 초기화되는지 (하이브리드 정합성) -----
 
 
-@requires_embedding
 def test_rebuild_resets_persistent_collection(tmp_path):
+    _check_embedding_or_skip()
     from compliance.rag.vector_store import VectorStore
 
     corpus_a = chunker.chunk_articles("제1조(옛 조항) 폐기될 이전 코퍼스 내용.", source="DOC_A")
@@ -167,8 +165,8 @@ def test_rebuild_resets_persistent_collection(tmp_path):
 # --- 4. hybrid_search 반환 항목이 요구된 키를 모두 포함 -----------------------
 
 
-@requires_embedding
 def test_search_result_has_required_keys():
+    _check_embedding_or_skip()
     from compliance.rag import pipeline
 
     chunks = chunker.chunk_articles(DUMMY_CORPUS, source="KOFIA_표준내부통제기준")
