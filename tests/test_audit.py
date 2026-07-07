@@ -7,6 +7,7 @@
 
 import hashlib
 import sqlite3
+import threading
 
 from compliance.audit import logger
 
@@ -99,6 +100,33 @@ def test_verify_chain_detects_tampering(tmp_path):
     assert result["valid"] is False
     assert result["broken_at"] == r2["id"]
     assert result["total_records"] == 3
+
+
+# --- 동시 append에서도 체인이 깨지지 않는다 (BEGIN IMMEDIATE 레이스 방지) -----
+
+
+def test_concurrent_appends_keep_chain_valid(tmp_path):
+    db = _db(tmp_path)
+    logger.init_db(db_path=db)
+    n = 12
+    barrier = threading.Barrier(n)  # 동시에 출발시켜 경합을 극대화한다.
+
+    def worker(i: int) -> None:
+        barrier.wait()
+        logger.append("t", f"원문{i}", f"요약{i}", False, db_path=db)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(n)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    # 레이스가 있었다면 prev_hash 분기로 체인이 깨졌을 것이다.
+    assert logger.verify_chain(db_path=db) == {
+        "valid": True,
+        "broken_at": None,
+        "total_records": n,
+    }
 
 
 # --- 6. 같은 입력이라도 record_hash는 매번 달라진다 ---------------------------

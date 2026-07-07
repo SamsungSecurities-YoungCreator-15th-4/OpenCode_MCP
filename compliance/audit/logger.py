@@ -70,17 +70,21 @@ def _connect(db_path: str) -> sqlite3.Connection:
         parent = os.path.dirname(db_path)
         if parent:
             os.makedirs(parent, exist_ok=True)
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    conn.execute(_CREATE_TABLE)
+    # isolation_level=None: 파이썬 sqlite3의 암묵적 트랜잭션을 끄고 append에서
+    # BEGIN IMMEDIATE를 직접 걸 수 있게 한다(읽기-수정-쓰기 원자화 → 체인 레이스 방지).
+    conn = sqlite3.connect(db_path, isolation_level=None)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute(_CREATE_TABLE)
+    except Exception:
+        conn.close()  # 테이블 생성 실패 시 연결 누수를 막는다.
+        raise
     return conn
 
 
 def init_db(db_path: str | None = None) -> None:
-    """테이블이 없으면 생성한다(멱등)."""
-    conn = _connect(db_path or _default_db_path())
-    conn.commit()
-    conn.close()
+    """테이블이 없으면 생성한다(멱등). _connect가 생성까지 수행한다."""
+    _connect(db_path or _default_db_path()).close()
 
 
 def _last_record_hash(conn: sqlite3.Connection) -> str:
@@ -108,6 +112,9 @@ def append(
 
     conn = _connect(db_path or _default_db_path())
     try:
+        # BEGIN IMMEDIATE로 쓰기 락을 즉시 잡아, 동시 append가 같은 prev_hash를
+        # 읽고 체인을 분기시키는 레이스를 막는다(경합 시 busy timeout 동안 대기).
+        conn.execute("BEGIN IMMEDIATE")
         prev_hash = _last_record_hash(conn)
         fields = {
             "timestamp": timestamp,
@@ -134,6 +141,9 @@ def append(
         )
         conn.commit()
         record_id = cursor.lastrowid
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 

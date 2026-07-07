@@ -5,5 +5,5 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
-# 로컬 데이터: 감사 로그 SQLite DB 등은 커밋하지 않는다
+# 로컬 데이터(규정 PDF·Chroma 인덱스·감사 로그 DB 등)는 커밋하지 않는다
 data/
