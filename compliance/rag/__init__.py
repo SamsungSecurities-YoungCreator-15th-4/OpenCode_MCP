@@ -1,6 +1,12 @@
 """check_disclosure_risk·search_compliance_rule 로직 (현재 mock).
 
-실제 구현 시 로컬 임베딩·Chroma 기반 RAG로 교체 예정.
+이 패키지는 두 층으로 구성된다.
+- 이 __init__.py: mcp_server.py가 호출하는 tool 진입점(현재 mock). RAG 파이프라인이
+  실구현되면 여기서 pipeline.search()를 호출하도록 교체한다.
+- 하위 모듈(chunker/embedder/vector_store/hybrid_search/pipeline): RAG 파이프라인 뼈대.
+  무거운 의존성(chromadb 등)은 이 __init__.py에서 import하지 않는다 —
+  mcp_server.py 기동 시 불필요하게 로드되지 않도록 소비 시점에만 import한다.
+
 원칙: "위반/적법" 단정 판단은 하지 않는다 — 규정 근거 제시와
 준법감시인 확인 필요 여부 안내까지만 수행한다.
 """
