@@ -90,17 +90,19 @@ def test_long_article_splits_by_clause_keeping_article():
     whole = chunker.chunk_articles(LONG_ARTICLE, source=source, max_chars=800)
     assert len(whole) == 1
 
-    # 임계값을 넘기면 항(①②③) 단위로 분할된다 (3개 항 → 3개 청크).
+    # 임계값을 넘기면 항(①②③) 단위로 여러 청크로 분할된다.
     parts = chunker.chunk_articles(LONG_ARTICLE, source=source, max_chars=60)
-    assert len(parts) == 3
+    assert len(parts) >= 3
     # 부모 조항번호·제목·category가 모든 분할 청크에서 동일하게 유지된다.
     assert {c["article"] for c in parts} == {"제99조"}
     assert {c["article_title"] for c in parts} == {"보고 절차"}
     assert all(c["category"] is None for c in parts)
-    # chunk_id 서브인덱스가 0,1,2로 증가한다.
-    assert [c["chunk_id"] for c in parts] == [f"kofia_99_{i}" for i in range(3)]
-    # 각 항 마커가 순서대로 한 청크씩에 담긴다.
-    assert [any(m in c["text"] for m in "①②③") for c in parts] == [True] * 3
+    # chunk_id 서브인덱스가 0,1,2...로 순차 증가한다.
+    assert [c["chunk_id"] for c in parts] == [
+        f"kofia_99_{i}" for i in range(len(parts))
+    ]
+    # 분할 후 어떤 청크도 max_chars를 넘지 않는다.
+    assert all(len(c["text"]) <= 60 for c in parts)
 
 
 # --- RRF 병합 순수 단위 테스트 (Ollama 불필요) -------------------------------
@@ -138,6 +140,28 @@ def test_pipeline_search_returns_relevant_chunk():
     assert results, "검색 결과가 비어 있으면 안 된다"
     # 질의와 의미상 가장 가까운 정보교류 차단(제52조)이 최상위에 온다.
     assert results[0]["article"] == "제52조"
+
+
+# --- 재구성(build_index) 시 영속 컬렉션이 초기화되는지 (하이브리드 정합성) -----
+
+
+@requires_embedding
+def test_rebuild_resets_persistent_collection(tmp_path):
+    from compliance.rag.vector_store import VectorStore
+
+    corpus_a = chunker.chunk_articles("제1조(옛 조항) 폐기될 이전 코퍼스 내용.", source="DOC_A")
+    corpus_b = chunker.chunk_articles(
+        "제52조(정보교류 차단) 부서 간 정보 교류를 차단한다.", source="DOC_B"
+    )
+    path = str(tmp_path / "chroma")
+
+    VectorStore(path=path, reset=True).upsert_chunks(corpus_a)
+    store = VectorStore(path=path, reset=True)  # 재구성 → A는 비워져야 한다
+    store.upsert_chunks(corpus_b)
+
+    hits = store.vector_search("조항", top_k=10)
+    # 과거 코퍼스 A의 청크는 남지 않고 B만 검색된다.
+    assert {h["chunk_id"] for h in hits} == {c["chunk_id"] for c in corpus_b}
 
 
 # --- 4. hybrid_search 반환 항목이 요구된 키를 모두 포함 -----------------------

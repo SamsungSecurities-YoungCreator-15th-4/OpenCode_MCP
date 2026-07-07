@@ -27,7 +27,8 @@ def _to_meta(chunk: dict) -> dict:
     return meta
 
 
-def _from_meta(document: str, meta: dict, fallback_id: str) -> dict:
+def _from_meta(document: str, meta: dict | None, fallback_id: str) -> dict:
+    meta = meta or {}  # Chroma가 메타데이터 없이 None을 돌려줘도 안전하게.
     return {
         "text": document,
         "source": meta.get("source", ""),
@@ -41,11 +42,20 @@ def _from_meta(document: str, meta: dict, fallback_id: str) -> dict:
 class VectorStore:
     """Chroma persistent(또는 인메모리) 컬렉션 래퍼."""
 
-    def __init__(self, path: str | None = DEFAULT_PATH, collection: str = COLLECTION):
+    def __init__(
+        self,
+        path: str | None = DEFAULT_PATH,
+        collection: str = COLLECTION,
+        reset: bool = False,
+    ):
         if path in (None, ":memory:"):
             client = chromadb.EphemeralClient()
         else:
             client = chromadb.PersistentClient(path=path)
+        # reset=True면 기존 컬렉션을 지우고 새로 만든다 — 영속 저장소에 과거 청크가
+        # 남아 BM25 인덱스(현재 청크만)와 어긋나는 하이브리드 검색 불일치를 방지.
+        if reset and collection in {c.name for c in client.list_collections()}:
+            client.delete_collection(name=collection)
         self._collection = client.get_or_create_collection(
             name=collection, metadata={"hnsw:space": "cosine"}
         )
@@ -67,6 +77,8 @@ class VectorStore:
 
     def vector_search(self, query: str, top_k: int) -> list[dict]:
         """질의를 임베딩해 유사 청크를 메타데이터 포함으로 반환한다(순위순)."""
+        if self._collection.count() == 0:
+            return []  # 빈 컬렉션이면 불필요한 임베딩 호출 없이 즉시 반환.
         from compliance.rag.embedder import embed_texts
 
         result = self._collection.query(

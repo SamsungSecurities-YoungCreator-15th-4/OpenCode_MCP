@@ -23,9 +23,14 @@ class _Pipeline:
 
         chroma_path=None이면 vector_store 기본 경로(data/chroma)를 쓴다.
         테스트에서는 ":memory:"를 넘겨 영속화 없이 인메모리로 돌린다.
+
+        build_index는 "전체 재구성" 의미다 → reset=True로 기존 컬렉션을 비우고
+        현재 chunks만 적재해, 벡터 저장소와 BM25 인덱스의 대상 청크를 일치시킨다.
         """
         vector_store = (
-            VectorStore() if chroma_path is None else VectorStore(path=chroma_path)
+            VectorStore(reset=True)
+            if chroma_path is None
+            else VectorStore(path=chroma_path, reset=True)
         )
         vector_store.upsert_chunks(chunks)
         self._searcher = HybridSearcher(vector_store, chunks)

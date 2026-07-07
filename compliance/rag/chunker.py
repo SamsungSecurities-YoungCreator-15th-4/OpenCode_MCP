@@ -62,7 +62,12 @@ def _split_if_long(text: str, max_chars: int) -> list[str]:
             piece = text[bounds[i] : bounds[i + 1]].strip()
             if i == 0 and head:
                 piece = f"{head} {piece}".strip()
-            if piece:
+            if not piece:
+                continue
+            # 개별 항이 여전히 max_chars를 넘으면 문장 단위로 한 번 더 쪼갠다.
+            if len(piece) > max_chars:
+                segments.extend(_greedy_split(piece, max_chars))
+            else:
                 segments.append(piece)
         return segments
 
