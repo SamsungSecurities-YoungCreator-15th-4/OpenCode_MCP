@@ -1,8 +1,9 @@
 # OpenCode_MCP
 
-[과제3] 오픈코드(OpenCode) 연동 MCP 개발
+[과제3] 오픈코드(OpenCode) 연동 MCP 개발 — **준법감시 사전확인 어시스턴트**
 
-OpenCode에 자연어로 요청하면 로컬 Ollama 모델이 우리가 만든 MCP 서버의 툴을 실제로 호출하는 체인을 구현한다.
+AI에 업무 내용을 입력하기 전에, OpenCode에 자연어로 요청하면 로컬 Ollama 모델이 우리 MCP 서버의
+준법감시 툴을 호출해 민감정보·공시위험을 사전 점검하는 체인을 구현한다.
 
 ```
 사용자 자연어 요청 → OpenCode → Ollama (qwen3-instruct-16k, 로컬) → MCP 서버 (mcp_server.py)
@@ -10,14 +11,31 @@ OpenCode에 자연어로 요청하면 로컬 Ollama 모델이 우리가 만든 M
 
 **과제 제약: MCP 서버에서 외부 상용 LLM API(OpenAI/Anthropic/Google) 및 Web/외부 API 호출 금지 — 로컬 전용.**
 
+> **구현 범위 안내 (뼈대 단계):** 4개 툴 중 `scan_sensitive_info`만 실제 로직으로 구현했고,
+> 나머지 3개는 mock이다. mock 툴은 응답에 `"mock": true`와 안내 문구를 담아 스스로 시연용임을
+> 밝힌다. 아래 [툴 구성](#툴-구성-실제-vs-mock) 표에서 실제/시연 범위를 확인할 수 있다.
+
+## 툴 구성 (실제 vs mock)
+
+| 툴 | 상태 | 하는 일 | 구현 예정 |
+| --- | --- | --- | --- |
+| `scan_sensitive_info(text)` | ✅ **실제** | 정규식으로 주민번호·전화·카드(Luhn)·이메일·계좌·대외비 키워드 탐지 후 **마스킹**해서만 반환 | — |
+| `check_disclosure_risk(text)` | 🧪 mock | 미공개 중대정보 여부 안내 (현재 보수적 기본값: 확인 필요) | 로컬 RAG 기반 규정 매칭 |
+| `search_compliance_rule(query)` | 🧪 mock | 내부 규정 조문 근거 검색 (현재 더미 조문 1건) | 로컬 임베딩·Chroma RAG |
+| `log_ai_usage(action, detail)` | 🧪 mock | AI 사용 이벤트 감사 로그 (현재 기록 안 함) | 로컬 파일 기반 감사 로그 |
+
+설계 원칙: 모든 툴은 "위반/적법"을 **단정하지 않고**, 규정 근거 제시와 준법감시인 확인 필요 여부
+(`requires_human_review`)까지만 안내한다. 전 툴은 `compliance/schema.py`의 공통 출력 스키마(dict)로 응답한다.
+
 ## 구성 파일
 
 | 파일 | 역할 |
 | --- | --- |
-| `mcp_server.py` | MCP 서버 (Python SDK `FastMCP`, stdio). 툴: `ping`, `list_files` |
+| `mcp_server.py` | MCP 서버 (Python SDK `FastMCP`, stdio). 위 4개 툴 등록 |
+| `compliance/` | 툴 로직 — `detector.py`(scan 실구현), `rag.py`·`audit.py`(mock), `schema.py`(공통 스키마) |
 | `opencode.json` | OpenCode 설정 — Ollama provider + MCP 서버(`local`) 등록 |
 | `Modelfile.instruct` | `num_ctx 16384` 파생 모델(`qwen3-instruct-16k`) 생성용 |
-| `test_client.py` | 수동 검증용 stdio 클라이언트 (서버 단독 테스트) |
+| `test_client.py` | 수동 검증용 stdio 클라이언트 (툴 4개 목록 조회 후 모두 호출) |
 | `tests/` | pytest 단위 테스트 (CI에서 실행) |
 
 ## 개발 환경 설정
@@ -58,16 +76,18 @@ python3 -m venv .venv
 ## 검증
 
 ```bash
-# 1. MCP 서버 단독 (OpenCode 없이)
+# 1. MCP 서버 단독 (OpenCode 없이) — 툴 4개 목록 조회 후 모두 호출
 .venv/bin/python test_client.py
-# → tools: ['ping', 'list_files'] / ping -> pong: hello
+# → tools: ['scan_sensitive_info', 'check_disclosure_risk',
+#           'search_compliance_rule', 'log_ai_usage']
 
 # 2. OpenCode ↔ MCP 연결 확인 (레포 루트에서)
 opencode mcp list
-# → ✓ local connected
+# → ✓ compliance-assistant connected
 
 # 3. E2E: 자연어 → LLM → 툴 호출
-opencode run --auto -m ollama/qwen3-instruct-16k "ping 툴로 hello 메시지를 보내줘"
+opencode run --auto -m ollama/qwen3-instruct-16k \
+  "이 문장에 민감정보 있는지 스캔해줘: 담당자 연락처는 010-1234-5678 입니다"
 ```
 
 ## 알아둘 것 (스파이크 검증 결과, 2026-07-03)
@@ -79,5 +99,5 @@ opencode run --auto -m ollama/qwen3-instruct-16k "ping 툴로 hello 메시지를
 ## 개발 규칙
 
 - GitFlow: `feature/*` → `develop` → `main` (main/develop 직접 푸시 불가, PR + 승인 1명 필수)
-- 커밋 컨벤션: `타입: 한국어 설명` (예: `feat: ping 툴 추가`)
+- 커밋 컨벤션: `타입: 한국어 설명` (예: `feat: scan_sensitive_info 계좌번호 탐지 추가`)
 - 상세: [CONTRIBUTING.md](CONTRIBUTING.md)

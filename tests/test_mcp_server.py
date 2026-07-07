@@ -1,31 +1,54 @@
 """MCP 툴 함수 단위 테스트 (FastMCP @tool 데코레이터는 원본 함수를 그대로 반환한다)."""
 
+import asyncio
+
 import mcp_server
+from compliance import schema
+
+EXPECTED_TOOLS = {
+    "scan_sensitive_info",
+    "check_disclosure_risk",
+    "search_compliance_rule",
+    "log_ai_usage",
+}
 
 
-def test_ping_echoes_message():
-    assert mcp_server.ping("hello") == "pong: hello"
+def test_exactly_four_tools_registered():
+    tools = asyncio.run(mcp_server.mcp.list_tools())
+    assert {t.name for t in tools} == EXPECTED_TOOLS
 
 
-def test_list_files_returns_sorted_names(tmp_path):
-    (tmp_path / "b.txt").touch()
-    (tmp_path / "a.txt").touch()
-    (tmp_path / "sub").mkdir()
-    assert mcp_server.list_files(str(tmp_path)) == ["a.txt", "b.txt", "sub"]
+def test_scan_sensitive_info_uses_real_detector():
+    result = mcp_server.scan_sensitive_info("담당자 연락처는 010-1234-5678 입니다.")
+    assert result["ok"] is True
+    assert result["tool"] == "scan_sensitive_info"
+    assert result["data"]["findings"][0]["type"] == "phone"
+    assert result["requires_human_review"] is True
 
 
-def test_list_files_rejects_non_directory(tmp_path):
-    missing = tmp_path / "nope"
-    result = mcp_server.list_files(str(missing))
-    assert len(result) == 1
-    assert result[0].startswith("error:")
+def test_every_tool_returns_common_schema():
+    results = [
+        mcp_server.scan_sensitive_info("점검용 텍스트"),
+        mcp_server.check_disclosure_risk("점검용 텍스트"),
+        mcp_server.search_compliance_rule("준법감시인 사전확인"),
+        mcp_server.log_ai_usage("scan", "단위 테스트"),
+    ]
+    for result in results:
+        assert set(result) == set(schema.RESULT_KEYS)
+        assert result["ok"] is True
+        assert result["error"] is None
 
 
-def test_list_files_handles_oserror(tmp_path, monkeypatch):
-    def raise_denied(self):
-        raise PermissionError("denied")
+def test_mock_tools_declare_themselves_as_mock():
+    for result in (
+        mcp_server.check_disclosure_risk("x"),
+        mcp_server.search_compliance_rule("x"),
+        mcp_server.log_ai_usage("x"),
+    ):
+        assert result["data"]["mock"] is True
+        assert "[mock]" in result["summary"]
 
-    monkeypatch.setattr(mcp_server.Path, "iterdir", raise_denied)
-    result = mcp_server.list_files(str(tmp_path))
-    assert len(result) == 1
-    assert result[0].startswith("error: cannot list")
+
+def test_check_disclosure_risk_mock_is_conservative():
+    # 규정 매칭 구현 전에는 무조건 "확인 필요"로 안내한다 (미탐 방지)
+    assert mcp_server.check_disclosure_risk("x")["requires_human_review"] is True
