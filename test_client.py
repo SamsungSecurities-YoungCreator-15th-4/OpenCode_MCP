@@ -1,4 +1,4 @@
-"""수동 검증용 standalone 클라이언트: mcp_server.py를 stdio로 띄워 툴 목록 조회 후 둘 다 호출.
+"""수동 검증용 standalone 클라이언트: mcp_server.py를 stdio로 띄워 툴 목록 조회 후 4개 모두 호출.
 
 실행: .venv/bin/python test_client.py
 (pytest 대상이 아님 — 자동 테스트는 tests/ 참고)
@@ -18,6 +18,14 @@ SERVER = StdioServerParameters(
     args=[str(REPO_ROOT / "mcp_server.py")],
 )
 
+# 민감정보 원본 대신 검증용 더미 값만 사용한다
+CALLS = [
+    ("scan_sensitive_info", {"text": "담당자 연락처는 010-1234-5678 입니다."}),
+    ("check_disclosure_risk", {"text": "3분기 실적 발표 전 내부 검토 자료"}),
+    ("search_compliance_rule", {"query": "준법감시인 사전확인 절차"}),
+    ("log_ai_usage", {"action": "scan", "detail": "수동 검증"}),
+]
+
 
 async def main() -> None:
     async with stdio_client(SERVER) as (read, write):
@@ -27,11 +35,9 @@ async def main() -> None:
             tools = await session.list_tools()
             print("tools:", [t.name for t in tools.tools])
 
-            r1 = await session.call_tool("ping", {"message": "hello"})
-            print("ping ->", r1.content[0].text)
-
-            r2 = await session.call_tool("list_files", {"directory": str(REPO_ROOT)})
-            print("list_files ->", [c.text for c in r2.content])
+            for name, args in CALLS:
+                result = await session.call_tool(name, args)
+                print(f"{name} ->", result.content[0].text)
 
 
 if __name__ == "__main__":
