@@ -5,5 +5,5 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
-# RAG 데이터: 규정 원문 PDF·Chroma 영속 인덱스는 커밋하지 않는다 (청크 텍스트만 관리)
+# 로컬 데이터(규정 PDF·Chroma 인덱스·감사 로그 DB 등)는 커밋하지 않는다
 data/
