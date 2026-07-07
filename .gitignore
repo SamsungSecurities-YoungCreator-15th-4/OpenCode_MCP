@@ -4,3 +4,6 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
+
+# 로컬 데이터: 감사 로그 SQLite DB 등은 커밋하지 않는다
+data/
