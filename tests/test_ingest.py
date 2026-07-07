@@ -17,17 +17,18 @@ SAMPLE = """
 """.strip()
 
 
-def _embedding_available() -> bool:
+def _check_embedding_or_skip() -> None:
+    """임베딩 가능 여부를 '테스트 실행 시점에' 확인한다.
+
+    skipif 데코레이터로 수집(collection) 단계에서 Ollama에 붙으면, 무관한
+    테스트 실행 때도 전체 수집이 지연될 수 있어 함수 내부에서 동적으로 스킵한다.
+    """
     try:
-        return len(embed_texts(["ping"])) == 1
+        if len(embed_texts(["ping"])) == 1:
+            return
     except Exception:
-        return False
-
-
-requires_embedding = pytest.mark.skipif(
-    not _embedding_available(),
-    reason="bge-m3 임베딩 불가 (Ollama 미기동 또는 모델 미설치) — 스킵",
-)
+        pass
+    pytest.skip("bge-m3 임베딩 불가 (Ollama 미기동 또는 모델 미설치) — 스킵")
 
 
 def test_load_chunks_uses_filename_as_source(tmp_path):
@@ -53,8 +54,19 @@ def test_load_chunks_merges_multiple_files(tmp_path):
     assert len(chunks) == 2
 
 
-@requires_embedding
+def test_load_chunks_reads_cp949(tmp_path):
+    # 국내 규정 텍스트가 CP949로 저장된 경우에도 읽어야 한다.
+    file = tmp_path / "규정_cp949.txt"
+    file.write_bytes("제7조(보고) 보고 절차를 정한다.".encode("cp949"))
+
+    chunks = ingest.load_chunks([str(file)])
+
+    assert chunks[0]["article"] == "제7조"
+    assert chunks[0]["article_title"] == "보고"
+
+
 def test_ingest_then_search(tmp_path):
+    _check_embedding_or_skip()
     from compliance.rag import pipeline
 
     file = tmp_path / "KOFIA_규정.txt"

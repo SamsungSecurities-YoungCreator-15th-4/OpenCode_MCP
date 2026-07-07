@@ -11,6 +11,7 @@
 """
 
 import argparse
+import glob
 import sys
 from pathlib import Path
 
@@ -19,6 +20,18 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from compliance.rag import ingest as ingest_mod  # noqa: E402
+
+
+def _expand(patterns: list[str]) -> list[str]:
+    """와일드카드를 직접 확장한다(Windows cmd 등 셸이 확장 안 하는 경우 대비).
+
+    매칭이 없는 패턴은 원문 그대로 남겨, 이후 읽기 단계에서 명확히 에러가 나게 한다.
+    """
+    expanded: list[str] = []
+    for pattern in patterns:
+        matched = sorted(glob.glob(pattern))
+        expanded.extend(matched if matched else [pattern])
+    return expanded
 
 
 def main() -> int:
@@ -32,7 +45,14 @@ def main() -> int:
     parser.add_argument("--query", help="적재 후 확인용 검색 질의(선택)")
     args = parser.parse_args()
 
-    summary = ingest_mod.ingest(args.paths, max_chars=args.max_chars)
+    try:
+        summary = ingest_mod.ingest(_expand(args.paths), max_chars=args.max_chars)
+    except FileNotFoundError as exc:
+        print(f"오류: 파일을 찾을 수 없습니다: {exc.filename}", file=sys.stderr)
+        return 1
+    except ValueError as exc:  # 인코딩 인식 실패 등
+        print(f"오류: {exc}", file=sys.stderr)
+        return 1
     if summary["total_chunks"] == 0:
         print(
             "경고: 조항(제○조) 헤더를 찾지 못해 적재된 청크가 없습니다.", file=sys.stderr
