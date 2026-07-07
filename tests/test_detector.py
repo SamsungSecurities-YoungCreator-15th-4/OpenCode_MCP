@@ -93,3 +93,49 @@ def test_result_follows_common_schema():
     result = detector.scan_text("점검용 텍스트")
     assert set(result) == set(schema.RESULT_KEYS)
     assert result["tool"] == "scan_sensitive_info"
+
+
+def test_korean_postposition_attached_still_detected():
+    # 조사가 공백 없이 붙어도 re.ASCII 경계로 탐지되어야 한다 (Gemini 리뷰 지적1)
+    phone = detector.scan_text("연락처는 010-1234-5678입니다.")
+    assert [f["type"] for f in phone["data"]["findings"]] == ["phone"]
+
+    email = detector.scan_text("자료는 gildong@example.com으로 회신 바랍니다.")
+    assert [f["type"] for f in email["data"]["findings"]] == ["email"]
+
+
+def test_foreigner_rrn_detected_and_masked():
+    # 외국인 등록번호(성별코드 5) 미탐 방지 (지적2)
+    result = detector.scan_text("외국인 등록번호는 900101-5234567 입니다.")
+    findings = result["data"]["findings"]
+    assert len(findings) == 1
+    assert findings[0]["type"] == "rrn"
+    assert findings[0]["value_masked"] == "900101-5******"
+    assert "5234567" not in json.dumps(result)
+
+
+def test_fifteen_digit_account_detected():
+    # 연속 15자리 계좌 미탐 방지 (지적3)
+    result = detector.scan_text("가상계좌 123456789012345 로 입금")
+    findings = result["data"]["findings"]
+    assert len(findings) == 1
+    assert findings[0]["type"] == "account"
+    assert findings[0]["confidence"] == "high"
+
+
+def test_bank_name_keyword_raises_confidence():
+    # 은행명이 계좌 앞에 오는 흔한 형태의 신뢰도 판정 (지적4)
+    result = detector.scan_text("국민은행 1234567890")
+    findings = result["data"]["findings"]
+    assert len(findings) == 1
+    assert findings[0]["type"] == "account"
+    assert findings[0]["confidence"] == "high"
+
+
+def test_short_email_local_is_fully_masked():
+    # 로컬파트 2자 이하는 원본 노출 없이 통째로 마스킹 (지적5)
+    result = detector.scan_text("메일은 ab@example.com 입니다.")
+    findings = result["data"]["findings"]
+    assert len(findings) == 1
+    assert findings[0]["value_masked"] == "***@example.com"
+    assert "ab@example.com" not in json.dumps(result)

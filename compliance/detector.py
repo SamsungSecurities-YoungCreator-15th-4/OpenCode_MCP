@@ -15,13 +15,15 @@ TOOL_NAME = "scan_sensitive_info"
 # 계좌번호 후보 판정에 쓰는 근접 키워드 탐색 범위 (앞뒤 글자 수)
 _ACCOUNT_KEYWORD_WINDOW = 20
 
-_RRN_RE = re.compile(r"\b(\d{6})[-\s]?([1-4]\d{6})\b")
-_PHONE_RE = re.compile(r"\b01[016789][-\s]?\d{3,4}[-\s]?\d{4}\b")
-_CARD_RE = re.compile(r"\b\d{4}([-\s]?)\d{4}\1\d{4}\1\d{4}\b")
-_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
-# 계좌번호: 하이픈 구분 2~4그룹 또는 연속 10~14자리 (총 자릿수는 _iter_accounts에서 재검증)
-_ACCOUNT_RE = re.compile(r"\b\d{1,6}(?:-\d{1,6}){1,3}\b|\b\d{10,14}\b")
-_ACCOUNT_KEYWORD_RE = re.compile(r"계좌|account|입금|예금", re.IGNORECASE)
+# re.ASCII: \b가 한글을 단어문자로 보지 않게 해 "5678입니다"처럼 조사가 공백 없이
+# 붙어도 경계가 성립하도록 한다. 성별코드는 외국인(5~8)·1800년대(9,0)까지 [0-9]로 확장.
+_RRN_RE = re.compile(r"\b(\d{6})[-\s]?([0-9]\d{6})\b", re.ASCII)
+_PHONE_RE = re.compile(r"\b01[016789][-\s]?\d{3,4}[-\s]?\d{4}\b", re.ASCII)
+_CARD_RE = re.compile(r"\b\d{4}([-\s]?)\d{4}\1\d{4}\1\d{4}\b", re.ASCII)
+_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", re.ASCII)
+# 계좌번호: 하이픈 구분 2~4그룹 또는 연속 10~15자리 (총 자릿수는 스캔 루프에서 재검증)
+_ACCOUNT_RE = re.compile(r"\b\d{1,6}(?:-\d{1,6}){1,3}\b|\b\d{10,15}\b", re.ASCII)
+_ACCOUNT_KEYWORD_RE = re.compile(r"계좌|account|입금|예금|은행|bank", re.IGNORECASE)
 _INTERNAL_RE = re.compile(r"대외비|내부자료|사외반출금지|미공개|발간\s?전|confidential", re.IGNORECASE)
 
 
@@ -58,6 +60,9 @@ def _mask_card(value: str) -> str:
 
 def _mask_email(value: str) -> str:
     local, domain = value.split("@", 1)
+    # 로컬파트가 2자 이하이면 앞 2자 노출이 곧 원본 전체 노출이므로 통째로 가린다
+    if len(local) <= 2:
+        return f"***@{domain}"
     return f"{local[:2]}***@{domain}"
 
 
@@ -120,7 +125,7 @@ def scan_text(text: str | None) -> dict:
     for m in _ACCOUNT_RE.finditer(text):
         if claims.overlaps(m.start(), m.end()):
             continue
-        if not 10 <= len(_digits(m.group())) <= 14:
+        if not 10 <= len(_digits(m.group())) <= 15:
             continue  # 날짜(8자리)·카드(16자리) 등은 계좌 후보에서 제외
         window = text[
             max(0, m.start() - _ACCOUNT_KEYWORD_WINDOW) : m.end()
