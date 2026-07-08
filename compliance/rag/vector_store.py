@@ -113,7 +113,8 @@ class VectorStore:
         ids = result["ids"][0]
         documents = result["documents"][0]
         metadatas = result["metadatas"][0]
-        distances = result.get("distances", [[]])[0]
+        distances_list = result.get("distances")
+        distances = distances_list[0] if distances_list else []
         hits = []
         for i in range(len(ids)):
             item = _from_meta(documents[i], metadatas[i], ids[i])

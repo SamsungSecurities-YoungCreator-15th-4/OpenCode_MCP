@@ -213,6 +213,32 @@ def test_rebuild_resets_persistent_collection(tmp_path):
     assert {h["chunk_id"] for h in hits} == {c["chunk_id"] for c in corpus_b}
 
 
+def test_vector_search_tolerates_none_distances(monkeypatch):
+    from compliance.rag.vector_store import VectorStore
+
+    class FakeCollection:
+        def count(self):
+            return 1
+
+        def query(self, query_embeddings, n_results, include):
+            return {
+                "ids": [["chunk-1"]],
+                "documents": [["제1조(목적) 테스트 조항입니다."]],
+                "metadatas": [[{"article": "제1조", "chunk_id": "chunk-1"}]],
+                "distances": None,
+            }
+
+    monkeypatch.setattr("compliance.rag.embedder.embed_texts", lambda texts: [[0.0]])
+    store = VectorStore.__new__(VectorStore)
+    store._collection = FakeCollection()
+
+    hits = store.vector_search("테스트", top_k=1)
+
+    assert hits[0]["chunk_id"] == "chunk-1"
+    assert "vector_distance" not in hits[0]
+    assert "vector_similarity" not in hits[0]
+
+
 # --- 4. hybrid_search 반환 항목이 요구된 키를 모두 포함 -----------------------
 
 
