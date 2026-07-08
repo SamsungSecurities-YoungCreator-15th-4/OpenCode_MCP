@@ -1,1 +1,6 @@
 mcp[cli]==1.28.1
+
+# RAG 파이프라인 (준법감시 규정 검색)
+chromadb==1.5.9
+rank_bm25==0.2.2
+# httpx는 mcp 의존성으로 이미 포함 — bge-m3 임베딩은 Ollama 경유라 별도 추가 없음.
