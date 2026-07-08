@@ -206,3 +206,37 @@ def test_log_safe_summary_does_not_include_original_text_or_masked_text_body():
     assert "A사 관련" not in log_safe_summary
     assert "PHONE" in log_safe_summary
     assert "INTERNAL_KEYWORD" in log_safe_summary
+
+
+def test_virtual_safe_number_050_detected_and_masked():
+    result = detector.scan_text("안심번호는 0507-1234-5678 입니다.")
+
+    findings = result["data"]["findings"]
+    assert len(findings) == 1
+    assert findings[0]["type"] == "phone"
+    assert findings[0]["value_masked"] == "0507-****-5678"
+    assert "0507-1234-5678" not in _dump(result)
+
+
+def test_account_with_refund_keyword_without_account_word_detected():
+    result = detector.scan_text("환불: 110-2222-3333333 으로 처리해주세요.")
+
+    findings = result["data"]["findings"]
+    assert len(findings) == 1
+    assert findings[0]["type"] == "account"
+    assert findings[0]["confidence"] == "high"
+    assert "3333333" not in _dump(result)
+
+
+def test_prohibited_claim_detects_reversed_word_order_and_particles():
+    result = detector.scan_text(
+        "이 상품은 수익률 보장되며, 손실이 없음, 위험은 없음이 특징입니다."
+    )
+
+    findings = result["data"]["findings"]
+    types = [finding["type"] for finding in findings]
+    assert types == ["prohibited_claim", "prohibited_claim", "prohibited_claim"]
+    assert result["requires_human_review"] is True
+    assert "수익률 보장" not in result["outputs"]["masked_text"]
+    assert "손실이 없음" not in result["outputs"]["masked_text"]
+    assert "위험은 없음" not in result["outputs"]["masked_text"]

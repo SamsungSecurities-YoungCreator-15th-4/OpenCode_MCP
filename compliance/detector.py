@@ -32,6 +32,7 @@ _PHONE_RE = re.compile(
     r"01[016789][-\s]?\d{3,4}[-\s]?\d{4}"  # 휴대전화
     r"|02[-\s]?\d{3,4}[-\s]?\d{4}"          # 서울 지역번호
     r"|0[3-6][1-5][-\s]?\d{3,4}[-\s]?\d{4}" # 지역번호
+    r"|050\d[-\s]?\d{3,4}[-\s]?\d{4}"       # 안심번호/가상번호 (0505, 0507 등)
     r"|070[-\s]?\d{3,4}[-\s]?\d{4}"         # 인터넷전화
     r")(?!\d)",
     re.ASCII,
@@ -60,8 +61,8 @@ _ACCOUNT_RE = re.compile(
 )
 
 _ACCOUNT_KEYWORD_RE = re.compile(
-    r"계좌|계좌번호|가상계좌|입금|출금|송금|이체|예금|은행|"
-    r"account|bank|deposit|transfer",
+    r"계좌|계좌번호|가상계좌|입금|출금|송금|이체|예금|은행|환불|"
+    r"account|bank|deposit|transfer|refund",
     re.IGNORECASE,
 )
 
@@ -73,9 +74,17 @@ _RRN_KEYWORD_RE = re.compile(
 # 금융상품 광고/고객 발송 문구에서 사람 검토가 필요한 금지·주의 표현
 _PROHIBITED_CLAIM_PATTERNS: list[tuple[str, str, str]] = [
     ("principal_guarantee", r"원금\s*(?:이\s*)?(?:보장|보전|보호)", "원금보장 오인 가능 표현"),
-    ("guaranteed_return", r"(?:확정|보장)\s*(?:수익|수익률|이자)", "확정수익/수익률 보장 표현"),
-    ("no_loss", r"(?:손실\s*(?:없음|제로|0)|무손실|손해\s*없음)", "손실 가능성 축소 표현"),
-    ("risk_free", r"(?:무위험|위험\s*(?:없음|제로|0))", "위험성 축소 표현"),
+    (
+        "guaranteed_return",
+        r"(?:확정|보장)\s*(?:수익|수익률|이자)|(?:수익|수익률|이자)\s*(?:이\s*)?(?:확정|보장)",
+        "확정수익/수익률 보장 표현",
+    ),
+    (
+        "no_loss",
+        r"(?:손실\s*(?:이\s*|은\s*)?(?:없음|제로|0)|무손실|손해\s*(?:가\s*|는\s*)?없음)",
+        "손실 가능성 축소 표현",
+    ),
+    ("risk_free", r"(?:무위험|위험\s*(?:이\s*|은\s*)?(?:없음|제로|0))", "위험성 축소 표현"),
     ("high_return_stable", r"(?:안정적\s*)?고수익", "고수익 과장 가능 표현"),
     ("always_profit", r"(?:무조건|반드시|100%)\s*(?:수익|상승|오름)", "단정적 수익 표현"),
 ]
@@ -159,6 +168,8 @@ def _mask_phone(value: str) -> str:
     digits = _digits(value)
     if digits.startswith("02"):
         return f"02-****-{digits[-4:]}"
+    if digits.startswith("050"):
+        return f"{digits[:4]}-****-{digits[-4:]}"
     return f"{digits[:3]}-****-{digits[-4:]}"
 
 
