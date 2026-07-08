@@ -8,6 +8,7 @@
 import pytest
 
 from compliance.rag import chunker
+from compliance.rag.corpus import corpus_fingerprint, load_corpus_chunks
 from compliance.rag.embedder import embed_texts
 from compliance.rag.hybrid_search import reciprocal_rank_fusion
 
@@ -101,6 +102,37 @@ def test_long_article_splits_by_clause_keeping_article():
     ]
     # 분할 후 어떤 청크도 max_chars를 넘지 않는다.
     assert all(len(c["text"]) <= 60 for c in parts)
+
+
+def test_plain_text_chunking_uses_stable_unique_ids_for_korean_source():
+    chunks = chunker.chunk_plain_text(
+        "조항 헤더가 없는 안내문입니다. " * 20,
+        source="표준투자권유준칙",
+        max_chars=100,
+        overlap=20,
+    )
+
+    assert len(chunks) > 1
+    assert len({c["chunk_id"] for c in chunks}) == len(chunks)
+    assert all(c["source"] == "표준투자권유준칙" for c in chunks)
+    assert all(c["article"] == "" for c in chunks)
+
+
+def test_corpus_loader_supports_text_files(tmp_path):
+    corpus_dir = tmp_path / "data"
+    corpus_dir.mkdir()
+    (corpus_dir / "01_rules.txt").write_text(
+        "제1조(목적) 준법감시 사전확인을 정한다.\n"
+        "제2조(광고) 투자광고는 준법감시인의 확인을 받는다.",
+        encoding="utf-8",
+    )
+
+    chunks = load_corpus_chunks(corpus_dir)
+    fingerprint = corpus_fingerprint(corpus_dir)
+
+    assert [c["article"] for c in chunks] == ["제1조", "제2조"]
+    assert all(c["file_name"] == "01_rules.txt" for c in chunks)
+    assert fingerprint["files"][0]["name"] == "01_rules.txt"
 
 
 # --- RRF 병합 순수 단위 테스트 (Ollama 불필요) -------------------------------
