@@ -19,6 +19,7 @@ from compliance.rag.chunker import chunk_articles, chunk_plain_text
 
 DEFAULT_CORPUS_DIR = Path(__file__).resolve().parent / "data"
 SUPPORTED_SUFFIXES = {".pdf", ".txt", ".md"}
+TEXT_ENCODINGS = ("utf-8", "cp949")
 
 
 def _normalize_text(text: str) -> str:
@@ -27,7 +28,7 @@ def _normalize_text(text: str) -> str:
     return re.sub(r"[ \t]+", " ", text)
 
 
-def _source_name(path: Path) -> str:
+def source_name(path: Path) -> str:
     stem = unicodedata.normalize("NFC", path.stem)
     return re.sub(r"^\d+[_\-\s]*", "", stem).strip() or stem
 
@@ -45,7 +46,12 @@ def _read_pdf(path: Path) -> str:
 
 
 def _read_text(path: Path) -> str:
-    return _normalize_text(path.read_text(encoding="utf-8"))
+    for encoding in TEXT_ENCODINGS:
+        try:
+            return _normalize_text(path.read_text(encoding=encoding))
+        except UnicodeDecodeError:
+            continue
+    raise ValueError(f"'{path}'의 인코딩을 인식할 수 없습니다 (UTF-8/CP949 아님).")
 
 
 def iter_corpus_files(corpus_dir: Path | str = DEFAULT_CORPUS_DIR) -> list[Path]:
@@ -91,7 +97,7 @@ def load_corpus_chunks(
     """로컬 코퍼스를 읽어 검색용 청크 리스트로 변환한다."""
     chunks: list[dict] = []
     for path in iter_corpus_files(corpus_dir):
-        source = _source_name(path)
+        source = source_name(path)
         text = load_document_text(path)
         article_chunks = chunk_articles(text, source=source, max_chars=max_chars)
         doc_chunks = article_chunks or chunk_plain_text(

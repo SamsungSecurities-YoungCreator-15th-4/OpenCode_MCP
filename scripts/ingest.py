@@ -1,12 +1,12 @@
 #!/usr/bin/env python
-"""규정 텍스트 코퍼스 인덱싱 CLI.
+"""규정 코퍼스 인덱싱 CLI.
 
 사용:
-    python scripts/ingest.py data/corpus/*.txt
-    python scripts/ingest.py data/corpus/*.txt --query "정보교류 차단"
+    python scripts/ingest.py compliance/rag/data/*
+    python scripts/ingest.py compliance/rag/data/* --query "정보교류 차단"
 
-입력 텍스트 파일은 "제○조(제목) 본문..." 형태로 이미 추출돼 있어야 한다
-(PDF 파싱은 이 스크립트의 상류, 데이터 담당 몫). 파일명이 곧 출처(source)다.
+입력은 PDF/TXT/MD를 지원한다. 조항 패턴이 있으면 조항 단위로, 없으면 plain
+text 청크로 적재한다. 파일명이 곧 출처(source)다.
 적재 경로 기본값은 data/chroma/ (CHROMA_PATH 환경변수로 변경 가능).
 """
 
@@ -36,17 +36,25 @@ def _expand(patterns: list[str]) -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="규정 텍스트 코퍼스를 조항 단위로 청킹·인덱싱한다."
+        description="규정 PDF/TXT/MD 코퍼스를 청킹·인덱싱한다."
     )
-    parser.add_argument("paths", nargs="+", help="구조화된 규정 텍스트 파일들")
+    parser.add_argument("paths", nargs="+", help="규정 PDF/TXT/MD 파일들")
     parser.add_argument(
-        "--max-chars", type=int, default=800, help="조항 청크 최대 길이(기본 800)"
+        "--max-chars", type=int, default=900, help="청크 최대 길이(기본 900)"
+    )
+    parser.add_argument(
+        "--overlap",
+        type=int,
+        default=120,
+        help="plain text 청킹 overlap 길이(기본 120)",
     )
     parser.add_argument("--query", help="적재 후 확인용 검색 질의(선택)")
     args = parser.parse_args()
 
     try:
-        summary = ingest_mod.ingest(_expand(args.paths), max_chars=args.max_chars)
+        summary = ingest_mod.ingest(
+            _expand(args.paths), max_chars=args.max_chars, overlap=args.overlap
+        )
     except FileNotFoundError as exc:
         print(f"오류: 파일을 찾을 수 없습니다: {exc.filename}", file=sys.stderr)
         return 1
@@ -55,7 +63,8 @@ def main() -> int:
         return 1
     if summary["total_chunks"] == 0:
         print(
-            "경고: 조항(제○조) 헤더를 찾지 못해 적재된 청크가 없습니다.", file=sys.stderr
+            "경고: 적재된 청크가 없습니다. 입력 파일 내용과 형식을 확인하세요.",
+            file=sys.stderr,
         )
         return 1
 

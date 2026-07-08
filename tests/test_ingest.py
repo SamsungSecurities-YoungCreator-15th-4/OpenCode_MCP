@@ -32,14 +32,15 @@ def _check_embedding_or_skip() -> None:
 
 
 def test_load_chunks_uses_filename_as_source(tmp_path):
-    file = tmp_path / "KOFIA_표준내부통제기준.txt"
+    file = tmp_path / "01_KOFIA_표준내부통제기준.txt"
     file.write_text(SAMPLE, encoding="utf-8")
 
     chunks = ingest.load_chunks([str(file)])
 
-    # 파일명(확장자 제외)이 source가 된다.
+    # 정렬용 숫자 prefix를 제거한 파일명(확장자 제외)이 source가 된다.
     assert {c["source"] for c in chunks} == {"KOFIA_표준내부통제기준"}
     assert [c["article"] for c in chunks] == ["제1조", "제52조"]
+    assert all(c["file_name"] == file.name for c in chunks)
 
 
 def test_load_chunks_merges_multiple_files(tmp_path):
@@ -63,6 +64,18 @@ def test_load_chunks_reads_cp949(tmp_path):
 
     assert chunks[0]["article"] == "제7조"
     assert chunks[0]["article_title"] == "보고"
+
+
+def test_load_chunks_falls_back_to_plain_text_for_unstructured_docs(tmp_path):
+    file = tmp_path / "가이드.md"
+    file.write_text("조항 헤더가 없는 안내문입니다. " * 20, encoding="utf-8")
+
+    chunks = ingest.load_chunks([str(file)], max_chars=100, overlap=20)
+
+    assert len(chunks) > 1
+    assert {c["source"] for c in chunks} == {"가이드"}
+    assert all(c["article"] == "" for c in chunks)
+    assert all(c["file_name"] == file.name for c in chunks)
 
 
 def test_ingest_then_search(tmp_path):
