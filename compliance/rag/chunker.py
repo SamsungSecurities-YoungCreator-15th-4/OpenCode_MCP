@@ -9,6 +9,7 @@
     text, source, article, article_title, chunk_id, category(항상 None)
 """
 
+import hashlib
 import re
 
 # 조항 헤더: "제52조(정보교류 차단)" / "제52조의2(...)" 형태.
@@ -21,9 +22,12 @@ _CLAUSE_RE = re.compile(f"[{_CLAUSE_MARKERS}]")
 
 
 def _id_prefix(source: str) -> str:
-    """source 앞부분의 ASCII 영숫자를 chunk_id 접두로 쓴다 (예: KOFIA_... → kofia)."""
+    """source 앞부분의 ASCII 영숫자 또는 짧은 해시를 chunk_id 접두로 쓴다."""
     m = re.match(r"[A-Za-z0-9]+", source)
-    return m.group(0).lower() if m else "doc"
+    if m:
+        return m.group(0).lower()
+    digest = hashlib.sha1(source.encode("utf-8")).hexdigest()[:10]
+    return f"doc_{digest}"
 
 
 def _greedy_split(text: str, max_chars: int) -> list[str]:
@@ -90,6 +94,7 @@ def chunk_articles(
     prefix = _id_prefix(source)
     matches = list(_ARTICLE_RE.finditer(structured_text))
     chunks: list[dict] = []
+    used_ids: dict[str, int] = {}
 
     for i, m in enumerate(matches):
         start = m.start()
@@ -104,15 +109,66 @@ def chunk_articles(
         artnum_token = num + (f"_{sub_digits}" if sub_digits else "")
 
         for j, segment in enumerate(_split_if_long(article_text, max_chars)):
+            base_chunk_id = f"{prefix}_{artnum_token}_{j}"
+            count = used_ids.get(base_chunk_id, 0)
+            used_ids[base_chunk_id] = count + 1
+            chunk_id = base_chunk_id if count == 0 else f"{base_chunk_id}_{count}"
             chunks.append(
                 {
                     "text": segment,
                     "source": source,
                     "article": article,
                     "article_title": article_title,
-                    "chunk_id": f"{prefix}_{artnum_token}_{j}",
+                    "chunk_id": chunk_id,
                     "category": None,  # 8기준 수동 태깅은 이후 단계
                 }
             )
 
+    return chunks
+
+
+def chunk_plain_text(
+    text: str,
+    source: str,
+    max_chars: int = 900,
+    overlap: int = 120,
+) -> list[dict]:
+    """조항 헤더가 없는 문서를 고정 길이 청크로 나눈다.
+
+    PDF 추출 결과가 목차·가이드라인처럼 "제○조(제목)" 구조를 갖지 않을 때의
+    폴백이다. 메타데이터 스키마는 조항 청크와 동일하게 유지한다.
+    """
+    cleaned = re.sub(r"\s+", " ", text).strip()
+    if not cleaned:
+        return []
+    if max_chars <= overlap:
+        raise ValueError("max_chars must be greater than overlap")
+
+    prefix = _id_prefix(source)
+    chunks: list[dict] = []
+    start = 0
+    index = 0
+    while start < len(cleaned):
+        end = min(len(cleaned), start + max_chars)
+        if end < len(cleaned):
+            boundary = cleaned.rfind(". ", start, end)
+            if boundary > start + max_chars // 2:
+                end = boundary + 2
+        segment = cleaned[start:end].strip()
+        if segment:
+            chunks.append(
+                {
+                    "text": segment,
+                    "source": source,
+                    "article": "",
+                    "article_title": "",
+                    "chunk_id": f"{prefix}_plain_{index}",
+                    "category": None,
+                }
+            )
+            index += 1
+        if end >= len(cleaned):
+            break
+        next_start = end - overlap
+        start = next_start if next_start > start else end
     return chunks
