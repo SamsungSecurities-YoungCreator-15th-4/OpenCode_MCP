@@ -118,6 +118,20 @@ def test_plain_text_chunking_uses_stable_unique_ids_for_korean_source():
     assert all(c["article"] == "" for c in chunks)
 
 
+def test_plain_text_chunking_advances_when_overlap_reaches_boundary():
+    text = ("가" * 110) + ". " + ("나" * 300)
+
+    chunks = chunker.chunk_plain_text(
+        text,
+        source="plain_rules",
+        max_chars=200,
+        overlap=150,
+    )
+
+    assert 1 < len(chunks) < 10
+    assert len({c["chunk_id"] for c in chunks}) == len(chunks)
+
+
 def test_corpus_loader_supports_text_files(tmp_path):
     corpus_dir = tmp_path / "data"
     corpus_dir.mkdir()

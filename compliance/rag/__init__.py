@@ -40,9 +40,12 @@ def _ensure_ready() -> tuple[bool, str | None]:
             return False, "compliance/rag/data에 검색 가능한 코퍼스 문서가 없습니다."
 
         if _INDEX_MANIFEST.exists():
-            current = json.loads(_INDEX_MANIFEST.read_text(encoding="utf-8"))
-            if current.get("corpus") == fingerprint and pipeline.load_index():
-                return True, None
+            try:
+                current = json.loads(_INDEX_MANIFEST.read_text(encoding="utf-8"))
+                if current.get("corpus") == fingerprint and pipeline.load_index():
+                    return True, None
+            except Exception:
+                pass
 
         chunks = load_corpus_chunks()
         if not chunks:
@@ -103,7 +106,7 @@ def check_disclosure_risk(text: str) -> dict:
     signals = _risk_signals(text)
     query = text if text.strip() else "공시 위험 준법감시 사전확인"
     matches = _search(query, top_k=_DEFAULT_TOP_K)
-    requires_review = bool(signals or matches)
+    requires_review = bool(signals)
 
     if signals:
         signal_text = ", ".join(s["type"] for s in signals)

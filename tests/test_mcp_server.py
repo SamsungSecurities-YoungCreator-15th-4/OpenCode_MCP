@@ -85,5 +85,15 @@ def test_log_ai_usage_is_real_and_records_hash():
     assert result["data"]["prev_hash"] == "GENESIS"
 
 
-def test_check_disclosure_risk_is_conservative_when_evidence_exists():
-    assert mcp_server.check_disclosure_risk("x")["requires_human_review"] is True
+def test_check_disclosure_risk_does_not_require_review_for_evidence_only():
+    result = mcp_server.check_disclosure_risk("x")
+
+    assert result["data"]["matches"]
+    assert result["requires_human_review"] is False
+
+
+def test_check_disclosure_risk_requires_review_for_risk_signal():
+    result = mcp_server.check_disclosure_risk("실적 발표 전 대외 공유 자료입니다.")
+
+    assert result["data"]["risk_signals"]
+    assert result["requires_human_review"] is True

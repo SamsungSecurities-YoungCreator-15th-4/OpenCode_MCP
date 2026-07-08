@@ -151,7 +151,7 @@ def chunk_plain_text(
     while start < len(cleaned):
         end = min(len(cleaned), start + max_chars)
         if end < len(cleaned):
-            boundary = max(cleaned.rfind(". ", start, end), cleaned.rfind("다. ", start, end))
+            boundary = cleaned.rfind(". ", start, end)
             if boundary > start + max_chars // 2:
                 end = boundary + 2
         segment = cleaned[start:end].strip()
@@ -169,5 +169,6 @@ def chunk_plain_text(
             index += 1
         if end >= len(cleaned):
             break
-        start = max(0, end - overlap)
+        next_start = end - overlap
+        start = next_start if next_start > start else end
     return chunks
