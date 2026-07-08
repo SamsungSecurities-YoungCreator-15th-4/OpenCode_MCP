@@ -25,8 +25,7 @@
 - 파일 처리: pypdf, python-docx / 테스트: pytest / 린트: ruff
 
 ## 공통 출력 스키마 (전 tool 공통 7키)
-ok(bool) / tool(str) / summary(str) / data(dict) / outputs(list[str])
-/ requires_human_review(bool) / error(str|None)
+ok(bool) / tool(str) / summary(str) / data(dict) / outputs(list[str]) / requires_human_review(bool) / error(str|None)
 - 성공·실패 무관 항상 이 형태. schema.py의 ok()/fail() 헬퍼만 사용한다.
 - outputs는 반드시 list[str]. dict로 바꾸지 않는다.
 
@@ -60,5 +59,5 @@ ok(bool) / tool(str) / summary(str) / data(dict) / outputs(list[str])
 - 기존 테스트를 깨지 않는다. Ollama 의존 테스트는 skip 마커를 유지한다.
 
 ## CLAUDE.md
-CLAUDE.md는 이 한 줄만 둔다:
-See @AGENTS.md for project context and rules.
+CLAUDE.md는 이 한 줄만 둔다 (단독 행 import 구문):
+@AGENTS.md
