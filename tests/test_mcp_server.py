@@ -21,6 +21,22 @@ def _tmp_audit_db(tmp_path, monkeypatch):
     monkeypatch.setenv("AUDIT_DB_PATH", str(tmp_path / "audit.db"))
 
 
+@pytest.fixture(autouse=True)
+def _stub_rag(monkeypatch):
+    """MCP 단위 테스트는 Ollama/Chroma 없이 tool 응답 계약만 검증한다."""
+    sample_match = {
+        "source": "표준투자권유준칙",
+        "file_name": "rules.pdf",
+        "article": "제10조",
+        "article_title": "사전확인",
+        "chunk_id": "rules_10_0",
+        "snippet": "준법감시인 사전확인이 필요하다.",
+        "score": 0.1,
+    }
+    monkeypatch.setattr(mcp_server.rag, "_ensure_ready", lambda: (True, None))
+    monkeypatch.setattr(mcp_server.rag, "_search", lambda query, top_k=5: [sample_match])
+
+
 def test_exactly_four_tools_registered():
     tools = asyncio.run(mcp_server.mcp.list_tools())
     assert {t.name for t in tools} == EXPECTED_TOOLS
@@ -47,14 +63,13 @@ def test_every_tool_returns_common_schema():
         assert result["error"] is None
 
 
-def test_mock_tools_declare_themselves_as_mock():
-    # scan·log_ai_usage는 실구현이므로 mock 선언 대상은 check·search 둘뿐이다.
+def test_rag_tools_declare_real_local_search():
     for result in (
         mcp_server.check_disclosure_risk("x"),
         mcp_server.search_compliance_rule("x"),
     ):
-        assert result["data"]["mock"] is True
-        assert "[mock]" in result["summary"]
+        assert result["data"]["mock"] is False
+        assert "hallucination_guard" in result["data"]
 
 
 def test_log_ai_usage_is_real_and_records_hash():
@@ -70,6 +85,5 @@ def test_log_ai_usage_is_real_and_records_hash():
     assert result["data"]["prev_hash"] == "GENESIS"
 
 
-def test_check_disclosure_risk_mock_is_conservative():
-    # 규정 매칭 구현 전에는 무조건 "확인 필요"로 안내한다 (미탐 방지)
+def test_check_disclosure_risk_is_conservative_when_evidence_exists():
     assert mcp_server.check_disclosure_risk("x")["requires_human_review"] is True

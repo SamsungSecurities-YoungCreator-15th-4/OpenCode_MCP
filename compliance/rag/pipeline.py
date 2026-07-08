@@ -17,6 +17,7 @@ from compliance.rag.vector_store import VectorStore
 class _Pipeline:
     def __init__(self) -> None:
         self._searcher: HybridSearcher | None = None
+        self._chunk_count = 0
 
     def build_index(self, chunks: list[dict], chroma_path: str | None = None) -> None:
         """청크를 임베딩·Chroma 적재하고 BM25 인덱스를 구성한다.
@@ -34,6 +35,25 @@ class _Pipeline:
         )
         vector_store.upsert_chunks(chunks)
         self._searcher = HybridSearcher(vector_store, chunks)
+        self._chunk_count = len(chunks)
+
+    def load_index(self, chroma_path: str | None = None) -> bool:
+        """기존 Chroma 컬렉션이 있으면 BM25만 재구성해 로드한다."""
+        vector_store = VectorStore() if chroma_path is None else VectorStore(path=chroma_path)
+        chunks = vector_store.all_chunks()
+        if not chunks:
+            return False
+        self._searcher = HybridSearcher(vector_store, chunks)
+        self._chunk_count = len(chunks)
+        return True
+
+    def ensure_index(self, chunks: list[dict], chroma_path: str | None = None) -> None:
+        """메모리에 검색기가 없으면 기존 Chroma를 재사용하거나 새로 구성한다."""
+        if self._searcher is not None:
+            return
+        if self.load_index(chroma_path=chroma_path):
+            return
+        self.build_index(chunks, chroma_path=chroma_path)
 
     def search(self, query: str, top_k: int = 5) -> list[dict]:
         if self._searcher is None:
@@ -49,6 +69,16 @@ _pipeline = _Pipeline()
 def build_index(chunks: list[dict], chroma_path: str | None = None) -> None:
     """모듈 전역 파이프라인에 인덱스를 구성한다(단일 진입점)."""
     _pipeline.build_index(chunks, chroma_path=chroma_path)
+
+
+def load_index(chroma_path: str | None = None) -> bool:
+    """영속 Chroma 인덱스를 전역 파이프라인에 로드한다."""
+    return _pipeline.load_index(chroma_path=chroma_path)
+
+
+def ensure_index(chunks: list[dict], chroma_path: str | None = None) -> None:
+    """전역 파이프라인에 검색 인덱스가 없으면 준비한다."""
+    _pipeline.ensure_index(chunks, chroma_path=chroma_path)
 
 
 def search(query: str, top_k: int = 5) -> list[dict]:

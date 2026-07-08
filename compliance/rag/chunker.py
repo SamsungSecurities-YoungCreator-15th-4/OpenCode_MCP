@@ -9,6 +9,7 @@
     text, source, article, article_title, chunk_id, category(항상 None)
 """
 
+import hashlib
 import re
 
 # 조항 헤더: "제52조(정보교류 차단)" / "제52조의2(...)" 형태.
@@ -21,9 +22,12 @@ _CLAUSE_RE = re.compile(f"[{_CLAUSE_MARKERS}]")
 
 
 def _id_prefix(source: str) -> str:
-    """source 앞부분의 ASCII 영숫자를 chunk_id 접두로 쓴다 (예: KOFIA_... → kofia)."""
+    """source 앞부분의 ASCII 영숫자 또는 짧은 해시를 chunk_id 접두로 쓴다."""
     m = re.match(r"[A-Za-z0-9]+", source)
-    return m.group(0).lower() if m else "doc"
+    if m:
+        return m.group(0).lower()
+    digest = hashlib.sha1(source.encode("utf-8")).hexdigest()[:10]
+    return f"doc_{digest}"
 
 
 def _greedy_split(text: str, max_chars: int) -> list[str]:
@@ -115,4 +119,50 @@ def chunk_articles(
                 }
             )
 
+    return chunks
+
+
+def chunk_plain_text(
+    text: str,
+    source: str,
+    max_chars: int = 900,
+    overlap: int = 120,
+) -> list[dict]:
+    """조항 헤더가 없는 문서를 고정 길이 청크로 나눈다.
+
+    PDF 추출 결과가 목차·가이드라인처럼 "제○조(제목)" 구조를 갖지 않을 때의
+    폴백이다. 메타데이터 스키마는 조항 청크와 동일하게 유지한다.
+    """
+    cleaned = re.sub(r"\s+", " ", text).strip()
+    if not cleaned:
+        return []
+    if max_chars <= overlap:
+        raise ValueError("max_chars must be greater than overlap")
+
+    prefix = _id_prefix(source)
+    chunks: list[dict] = []
+    start = 0
+    index = 0
+    while start < len(cleaned):
+        end = min(len(cleaned), start + max_chars)
+        if end < len(cleaned):
+            boundary = max(cleaned.rfind(". ", start, end), cleaned.rfind("다. ", start, end))
+            if boundary > start + max_chars // 2:
+                end = boundary + 2
+        segment = cleaned[start:end].strip()
+        if segment:
+            chunks.append(
+                {
+                    "text": segment,
+                    "source": source,
+                    "article": "",
+                    "article_title": "",
+                    "chunk_id": f"{prefix}_plain_{index}",
+                    "category": None,
+                }
+            )
+            index += 1
+        if end >= len(cleaned):
+            break
+        start = max(0, end - overlap)
     return chunks

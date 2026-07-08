@@ -23,7 +23,15 @@ CALLS = [
     ("scan_sensitive_info", {"text": "담당자 연락처는 010-1234-5678 입니다."}),
     ("check_disclosure_risk", {"text": "3분기 실적 발표 전 내부 검토 자료"}),
     ("search_compliance_rule", {"query": "준법감시인 사전확인 절차"}),
-    ("log_ai_usage", {"action": "scan", "detail": "수동 검증"}),
+    (
+        "log_ai_usage",
+        {
+            "tool_name": "scan_sensitive_info",
+            "input_text": "수동 검증 입력",
+            "result_summary": "수동 검증",
+            "requires_human_review": False,
+        },
+    ),
 ]
 
 
