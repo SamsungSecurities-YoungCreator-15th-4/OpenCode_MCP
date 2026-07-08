@@ -35,6 +35,14 @@ def _stub_rag(monkeypatch):
     }
     monkeypatch.setattr(mcp_server.rag, "_ensure_ready", lambda: (True, None))
     monkeypatch.setattr(mcp_server.rag, "_search", lambda query, top_k=5: [sample_match])
+    monkeypatch.setattr(
+        mcp_server.rag,
+        "_generate_answer",
+        lambda task, query, matches, risk_signals=None: (
+            "준법감시인 사전확인이 필요할 수 있으므로 근거를 확인하세요. [1]",
+            {"enabled": True, "model": "qwen3-instruct-16k", "error": None},
+        ),
+    )
 
 
 def test_exactly_four_tools_registered():
@@ -70,6 +78,8 @@ def test_rag_tools_declare_real_local_search():
     ):
         assert result["data"]["mock"] is False
         assert "hallucination_guard" in result["data"]
+        assert result["data"]["answer"]
+        assert result["data"]["answer_generation"]["model"] == "qwen3-instruct-16k"
 
 
 def test_log_ai_usage_is_real_and_records_hash():

@@ -19,6 +19,11 @@ from compliance.schema import fail, ok
 
 _DEFAULT_TOP_K = 5
 _INDEX_MANIFEST = Path(os.environ.get("RAG_INDEX_MANIFEST", "data/chroma_manifest.json"))
+_GENERATE_ANSWER = os.environ.get("RAG_GENERATE_ANSWER", "1").lower() not in {
+    "0",
+    "false",
+    "no",
+}
 _RISK_SIGNAL_PATTERNS = {
     "미공개/발표 전 정보": r"미공개|발표\s*전|공개\s*전|내부\s*자료|대외비|confidential",
     "실적/재무 전망": r"실적|매출|영업이익|순이익|손익|전망|가이던스|forecast",
@@ -84,6 +89,29 @@ def _search(query: str, top_k: int = _DEFAULT_TOP_K) -> list[dict]:
     return [_format_match(item) for item in pipeline.search(query, top_k=top_k)]
 
 
+def _generate_answer(
+    task: str,
+    query: str,
+    matches: list[dict],
+    risk_signals: list[dict] | None = None,
+) -> tuple[str | None, dict]:
+    if not _GENERATE_ANSWER:
+        return None, {"enabled": False, "model": None, "error": None}
+
+    from compliance.rag.generator import CHAT_MODEL, generate_grounded_answer
+
+    try:
+        answer = generate_grounded_answer(
+            task=task,
+            query=query,
+            matches=matches,
+            risk_signals=risk_signals,
+        )
+        return answer, {"enabled": True, "model": CHAT_MODEL, "error": None}
+    except Exception as exc:
+        return None, {"enabled": True, "model": CHAT_MODEL, "error": str(exc)}
+
+
 def _risk_signals(text: str) -> list[dict]:
     signals: list[dict] = []
     for label, pattern in _RISK_SIGNAL_PATTERNS.items():
@@ -107,8 +135,16 @@ def check_disclosure_risk(text: str) -> dict:
     query = text if text.strip() else "공시 위험 준법감시 사전확인"
     matches = _search(query, top_k=_DEFAULT_TOP_K)
     requires_review = bool(signals)
+    answer, generation = _generate_answer(
+        "대외 공유 전 공시/준법 위험 신호를 점검하고 근거 기반으로 안내",
+        query,
+        matches,
+        risk_signals=signals,
+    )
 
-    if signals:
+    if answer:
+        summary = answer
+    elif signals:
         signal_text = ", ".join(s["type"] for s in signals)
         summary = (
             f"공시/대외공유 관련 위험 신호가 감지되었습니다: {signal_text}. "
@@ -128,7 +164,9 @@ def check_disclosure_risk(text: str) -> dict:
             "risk_signals": signals,
             "matches": matches,
             "input_chars": len(text),
-            "hallucination_guard": "응답은 로컬 코퍼스 검색 결과와 결정론 키워드 신호만 사용합니다.",
+            "answer": answer,
+            "answer_generation": generation,
+            "hallucination_guard": "qwen 답변은 로컬 코퍼스 검색 결과와 결정론 키워드 신호만 근거로 생성합니다.",
         },
         outputs=[
             f"{m['source']} {m['article']} {m['article_title']}: {m['snippet']}"
@@ -149,7 +187,14 @@ def search_compliance_rule(query: str) -> dict:
         )
 
     matches = _search(query, top_k=_DEFAULT_TOP_K)
-    if matches:
+    answer, generation = _generate_answer(
+        "준법 규정 질의에 대해 검색 근거만 사용해 답변",
+        query,
+        matches,
+    )
+    if answer:
+        summary = answer
+    elif matches:
         summary = f"로컬 규정 코퍼스에서 관련 근거 {len(matches)}건을 찾았습니다."
     else:
         summary = "로컬 규정 코퍼스에서 관련 근거를 찾지 못했습니다."
@@ -161,9 +206,11 @@ def search_compliance_rule(query: str) -> dict:
             "mock": False,
             "query": query,
             "matches": matches,
+            "answer": answer,
+            "answer_generation": generation,
             "embedding_model": "bge-m3",
             "vector_db": "Chroma",
-            "hallucination_guard": "검색 결과 원문 snippet만 근거로 반환합니다.",
+            "hallucination_guard": "qwen 답변은 검색 결과 원문 snippet만 근거로 생성합니다.",
         },
         outputs=[
             f"{m['source']} {m['article']} {m['article_title']}: {m['snippet']}"
