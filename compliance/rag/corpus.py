@@ -58,6 +58,21 @@ def iter_corpus_files(corpus_dir: Path | str = DEFAULT_CORPUS_DIR) -> list[Path]
     )
 
 
+def corpus_fingerprint(corpus_dir: Path | str = DEFAULT_CORPUS_DIR) -> dict:
+    """코퍼스 파일 목록·크기·수정시각 기반 지문을 반환한다."""
+    files = []
+    for path in iter_corpus_files(corpus_dir):
+        stat = path.stat()
+        files.append(
+            {
+                "name": path.name,
+                "size": stat.st_size,
+                "mtime_ns": stat.st_mtime_ns,
+            }
+        )
+    return {"files": files}
+
+
 def load_document_text(path: Path) -> str:
     """지원 문서 하나에서 텍스트를 추출한다."""
     suffix = path.suffix.lower()

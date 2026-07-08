@@ -10,11 +10,15 @@
 준법감시인 확인 필요 여부 안내까지만 수행한다.
 """
 
+import json
+import os
 import re
+from pathlib import Path
 
 from compliance.schema import fail, ok
 
 _DEFAULT_TOP_K = 5
+_INDEX_MANIFEST = Path(os.environ.get("RAG_INDEX_MANIFEST", "data/chroma_manifest.json"))
 _RISK_SIGNAL_PATTERNS = {
     "미공개/발표 전 정보": r"미공개|발표\s*전|공개\s*전|내부\s*자료|대외비|confidential",
     "실적/재무 전망": r"실적|매출|영업이익|순이익|손익|전망|가이던스|forecast",
@@ -28,13 +32,27 @@ _RISK_SIGNAL_PATTERNS = {
 def _ensure_ready() -> tuple[bool, str | None]:
     """로컬 코퍼스와 Chroma 인덱스를 준비한다."""
     try:
-        from compliance.rag.corpus import load_corpus_chunks
+        from compliance.rag.corpus import corpus_fingerprint, load_corpus_chunks
         from compliance.rag import pipeline
+
+        fingerprint = corpus_fingerprint()
+        if not fingerprint["files"]:
+            return False, "compliance/rag/data에 검색 가능한 코퍼스 문서가 없습니다."
+
+        if _INDEX_MANIFEST.exists():
+            current = json.loads(_INDEX_MANIFEST.read_text(encoding="utf-8"))
+            if current.get("corpus") == fingerprint and pipeline.load_index():
+                return True, None
 
         chunks = load_corpus_chunks()
         if not chunks:
             return False, "compliance/rag/data에 검색 가능한 코퍼스 문서가 없습니다."
-        pipeline.ensure_index(chunks)
+        pipeline.build_index(chunks)
+        _INDEX_MANIFEST.parent.mkdir(parents=True, exist_ok=True)
+        _INDEX_MANIFEST.write_text(
+            json.dumps({"corpus": fingerprint, "chunks": len(chunks)}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
         return True, None
     except Exception as exc:
         return False, str(exc)

@@ -94,6 +94,7 @@ def chunk_articles(
     prefix = _id_prefix(source)
     matches = list(_ARTICLE_RE.finditer(structured_text))
     chunks: list[dict] = []
+    used_ids: dict[str, int] = {}
 
     for i, m in enumerate(matches):
         start = m.start()
@@ -108,13 +109,17 @@ def chunk_articles(
         artnum_token = num + (f"_{sub_digits}" if sub_digits else "")
 
         for j, segment in enumerate(_split_if_long(article_text, max_chars)):
+            base_chunk_id = f"{prefix}_{artnum_token}_{j}"
+            count = used_ids.get(base_chunk_id, 0)
+            used_ids[base_chunk_id] = count + 1
+            chunk_id = base_chunk_id if count == 0 else f"{base_chunk_id}_{count}"
             chunks.append(
                 {
                     "text": segment,
                     "source": source,
                     "article": article,
                     "article_title": article_title,
-                    "chunk_id": f"{prefix}_{artnum_token}_{j}",
+                    "chunk_id": chunk_id,
                     "category": None,  # 8기준 수동 태깅은 이후 단계
                 }
             )
