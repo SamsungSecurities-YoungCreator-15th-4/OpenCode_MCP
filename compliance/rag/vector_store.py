@@ -16,7 +16,7 @@ COLLECTION = "compliance_rules"
 
 # Chroma 메타데이터 값은 None을 허용하지 않으므로 category=None은 ""로 저장하고
 # 조회 시 다시 None으로 복원한다.
-_META_KEYS = ("source", "article", "article_title", "chunk_id", "category")
+_META_KEYS = ("source", "article", "article_title", "chunk_id", "category", "file_name")
 
 
 def _to_meta(chunk: dict) -> dict:
@@ -29,7 +29,7 @@ def _to_meta(chunk: dict) -> dict:
 
 def _from_meta(document: str, meta: dict | None, fallback_id: str) -> dict:
     meta = meta or {}  # Chroma가 메타데이터 없이 None을 돌려줘도 안전하게.
-    return {
+    chunk = {
         "text": document,
         "source": meta.get("source", ""),
         "article": meta.get("article", ""),
@@ -37,6 +37,9 @@ def _from_meta(document: str, meta: dict | None, fallback_id: str) -> dict:
         "chunk_id": meta.get("chunk_id") or fallback_id,
         "category": meta.get("category") or None,
     }
+    if meta.get("file_name"):
+        chunk["file_name"] = meta["file_name"]
+    return chunk
 
 
 class VectorStore:
@@ -74,6 +77,22 @@ class VectorStore:
             metadatas=[_to_meta(c) for c in chunks],
         )
         return len(chunks)
+
+    def count(self) -> int:
+        """컬렉션에 저장된 청크 수를 반환한다."""
+        return self._collection.count()
+
+    def all_chunks(self) -> list[dict]:
+        """영속 컬렉션에서 BM25 재구성용 청크를 읽어온다."""
+        if self._collection.count() == 0:
+            return []
+        result = self._collection.get(include=["documents", "metadatas"])
+        ids = result.get("ids", [])
+        documents = result.get("documents", [])
+        metadatas = result.get("metadatas", [])
+        return [
+            _from_meta(documents[i], metadatas[i], ids[i]) for i in range(len(ids))
+        ]
 
     def vector_search(self, query: str, top_k: int) -> list[dict]:
         """질의를 임베딩해 유사 청크를 메타데이터 포함으로 반환한다(순위순)."""

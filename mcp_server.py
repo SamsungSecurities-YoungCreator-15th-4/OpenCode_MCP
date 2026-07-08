@@ -3,7 +3,7 @@
 제약: 외부 상용 LLM API(OpenAI/Anthropic/Google) 및 Web/외부 API 호출 금지 — 로컬 전용.
 stdio transport로 동작한다 (FastMCP.run() 기본값).
 
-tool 4개 중 scan_sensitive_info·log_ai_usage는 실제 로직이며 나머지 2개는 mock이다.
+tool 4개 모두 실제 로컬 로직으로 동작한다.
 모든 tool은 compliance.schema의 공통 출력 스키마(dict)로 응답한다.
 """
 
