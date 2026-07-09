@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 
@@ -27,6 +28,10 @@ _RRN_KEYWORD_WINDOW = 18
 # 대량 탐지 시 요약 문자열이 무한정 길어져 가독성이 떨어지거나 감사 로그 저장소의
 # 컬럼 길이 제한을 초과하는 걸 막기 위한 상한이다.
 _MAX_MASKED_VALUES_PER_TYPE = 5
+
+# data.findings에 반환하는 상세 탐지 결과 최대 개수. 전체 탐지 건수는 별도
+# metadata로 보존해, 긴 입력에서도 MCP 응답 크기를 예측 가능하게 유지한다.
+_DEFAULT_MAX_FINDINGS = 100
 
 # re.ASCII:
 # \b 대신 (?<!\d), (?!\d)를 주로 사용해 한글 조사("입니다", "으로")가 붙어도 탐지되도록 한다.
@@ -238,6 +243,17 @@ def _count_by_type(findings: list[dict]) -> dict[str, int]:
     return counts
 
 
+def _max_findings() -> int:
+    """환경변수로 findings 반환 상한을 조정하되, 잘못된 값은 기본값으로 복구한다."""
+    raw = os.environ.get("SCAN_MAX_FINDINGS")
+    if raw is None:
+        return _DEFAULT_MAX_FINDINGS
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return _DEFAULT_MAX_FINDINGS
+
+
 def _masked_values_text(findings: list[dict]) -> str:
     """탐지 타입별로 마스킹된 값을 나열한 문자열을 만든다.
 
@@ -264,7 +280,11 @@ def _masked_values_text(findings: list[dict]) -> str:
     return ", ".join(parts)
 
 
-def _log_safe_summary(findings: list[dict], requires_human_review: bool) -> str:
+def _log_safe_summary(
+    findings: list[dict],
+    requires_human_review: bool,
+    truncated_findings: int = 0,
+) -> str:
     """log_ai_usage의 result_summary에 넘겨도 안전한 요약.
 
     원문 텍스트나 masked_text 전체를 넣지 않는다. 대신 이미 마스킹되어 안전한
@@ -276,7 +296,10 @@ def _log_safe_summary(findings: list[dict], requires_human_review: bool) -> str:
 
     values_text = _masked_values_text(findings)
     review_text = "사람 검토 필요" if requires_human_review else "자동 마스킹 완료"
-    return f"scan_sensitive_info: {values_text}; {review_text}"
+    truncation_text = ""
+    if truncated_findings:
+        truncation_text = f"; findings 상세 {truncated_findings}건 생략"
+    return f"scan_sensitive_info: {values_text}; {review_text}{truncation_text}"
 
 
 def _add_finding(
@@ -319,12 +342,18 @@ def scan_text(text: str | None) -> dict:
     """
     if text is None or text == "":
         empty_summary = "scan_sensitive_info: 빈 입력"
+        max_findings = _max_findings()
         return ok(
             TOOL_NAME,
             "입력이 비어 있어 탐지할 내용이 없습니다.",
             data={
                 "findings": [],
                 "counts": {},
+                "total_findings": 0,
+                "returned_findings": 0,
+                "max_findings": max_findings,
+                "truncated": False,
+                "truncated_findings": 0,
                 "masked_text": "",
                 "detected_types": [],
                 "log_safe_summary": empty_summary,
@@ -493,7 +522,17 @@ def scan_text(text: str | None) -> dict:
     counts = _count_by_type(findings)
     detected_types = sorted({_type_code(finding["type"]) for finding in findings})
     requires_human_review = any(finding["requires_human_review"] for finding in findings)
-    log_safe_summary = _log_safe_summary(findings, requires_human_review)
+    max_findings = _max_findings()
+    total_findings = len(findings)
+    returned_findings = min(total_findings, max_findings)
+    truncated_findings = total_findings - returned_findings
+    truncated = truncated_findings > 0
+    returned_findings_list = findings[:returned_findings]
+    log_safe_summary = _log_safe_summary(
+        findings,
+        requires_human_review,
+        truncated_findings=truncated_findings,
+    )
 
     if not findings:
         summary = "민감정보·금융 금지문구 패턴이 탐지되지 않았습니다."
@@ -503,6 +542,10 @@ def scan_text(text: str | None) -> dict:
             f"스캔 결과 {len(findings)}건이 탐지되었습니다 ({values_text}). "
             "개인정보는 마스킹했으며, 외부 공유 전 사람 검토가 필요합니다."
         )
+        if truncated:
+            summary += (
+                f" 상세 반환은 {returned_findings}/{total_findings}건으로 제한했습니다."
+            )
 
     # outputs는 schema.ok()의 계약(list[str])을 따르는 사람이 읽을 요약이며,
     # masked_text/detected_types 같은 구조화 payload는 data에만 둔다 (중복 방지).
@@ -511,8 +554,13 @@ def scan_text(text: str | None) -> dict:
         TOOL_NAME,
         summary,
         data={
-            "findings": findings,
+            "findings": returned_findings_list,
             "counts": counts,
+            "total_findings": total_findings,
+            "returned_findings": returned_findings,
+            "max_findings": max_findings,
+            "truncated": truncated,
+            "truncated_findings": truncated_findings,
             "masked_text": masked_text,
             "detected_types": detected_types,
             "log_safe_summary": log_safe_summary,
