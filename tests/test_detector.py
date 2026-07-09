@@ -44,7 +44,7 @@ def test_result_follows_common_seven_key_schema():
     assert result["tool"] == "scan_sensitive_info"
 
 
-def test_rrn_detected_masked_and_does_not_force_review_when_masked():
+def test_rrn_detected_masked_and_still_requires_review():
     result = detector.scan_text("고객 주민등록번호는 900101-1234567 입니다.")
 
     findings = result["data"]["findings"]
@@ -55,8 +55,8 @@ def test_rrn_detected_masked_and_does_not_force_review_when_masked():
     assert result["data"]["masked_text"] == "고객 주민등록번호는 900101-1****** 입니다."
     assert result["data"]["detected_types"] == ["RRN"]
 
-    # 일반 개인정보가 완전히 마스킹된 경우는 P4 합의에 따라 false
-    assert result["requires_human_review"] is False
+    # 개인정보가 탐지되면 마스킹 여부와 무관하게 사람 검토가 필요하다
+    assert result["requires_human_review"] is True
 
     # 원본 뒷자리가 반환 어디에도 평문으로 남지 않아야 한다
     assert "1234567" not in _dump(result)
@@ -93,7 +93,7 @@ def test_phone_detected_and_masked_with_korean_postposition():
     assert findings[0]["value_masked"] == "010-****-5678"
     assert result["data"]["masked_text"] == "담당자 연락처는 010-****-5678입니다."
     assert "010-1234-5678" not in _dump(result)
-    assert result["requires_human_review"] is False
+    assert result["requires_human_review"] is True
 
 
 def test_email_detected_and_masked_with_korean_postposition():
@@ -105,7 +105,7 @@ def test_email_detected_and_masked_with_korean_postposition():
     assert findings[0]["value_masked"] == "gi***@example.com"
     assert result["data"]["masked_text"] == "자료는 gi***@example.com으로 회신 바랍니다."
     assert "gildong.hong@example.com" not in _dump(result)
-    assert result["requires_human_review"] is False
+    assert result["requires_human_review"] is True
 
 
 def test_short_email_local_is_fully_masked():
@@ -144,7 +144,7 @@ def test_account_with_virtual_account_pattern_detected():
     assert "110-2222-3333333" not in _dump(result)
     assert "ho***@example.com" in result["data"]["masked_text"]
     assert "***3333" in result["data"]["masked_text"]
-    assert result["requires_human_review"] is False
+    assert result["requires_human_review"] is True
 
 
 def test_contiguous_account_with_keyword_detected():

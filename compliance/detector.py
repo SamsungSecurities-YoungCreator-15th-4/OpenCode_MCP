@@ -104,7 +104,15 @@ _INTERNAL_RE = re.compile(
     re.IGNORECASE,
 )
 
-_REVIEW_REQUIRED_TYPES = {"prohibited_claim", "internal_keyword"}
+_REVIEW_REQUIRED_TYPES = {
+    "rrn",
+    "phone",
+    "card",
+    "email",
+    "account",
+    "prohibited_claim",
+    "internal_keyword",
+}
 
 
 @dataclass(frozen=True)
@@ -461,16 +469,10 @@ def scan_text(text: str | None) -> dict:
         summary = "민감정보·금융 금지문구 패턴이 탐지되지 않았습니다."
     else:
         count_text = ", ".join(f"{_type_code(kind)} {count}건" for kind, count in sorted(counts.items()))
-        if requires_human_review:
-            summary = (
-                f"스캔 결과 {len(findings)}건이 탐지되었습니다 ({count_text}). "
-                "개인정보는 마스킹했으며, 사람 검토가 필요한 금지표현/내부정보 키워드가 포함되어 있습니다."
-            )
-        else:
-            summary = (
-                f"스캔 결과 {len(findings)}건이 탐지되었습니다 ({count_text}). "
-                "탐지된 개인정보 패턴은 마스킹되었습니다."
-            )
+        summary = (
+            f"스캔 결과 {len(findings)}건이 탐지되었습니다 ({count_text}). "
+            "개인정보는 마스킹했으며, 외부 공유 전 사람 검토가 필요합니다."
+        )
 
     # outputs는 schema.ok()의 계약(list[str])을 따르는 사람이 읽을 요약이며,
     # masked_text/detected_types 같은 구조화 payload는 data에만 둔다 (중복 방지).
