@@ -67,6 +67,12 @@ def test_scan_sensitive_info_requires_review_for_prohibited_claim():
     assert result["data"]["detected_types"] == ["PROHIBITED_CLAIM"]
     assert result["requires_human_review"] is True
 
+def test_scan_sensitive_info_docstring_warns_against_quoting_raw_input():
+    # 툴 설명은 LLM이 읽는 사용 지침이다 — 원문을 최종 답변에 그대로 옮기지
+    # 말라는 경고가 빠지지 않았는지 회귀 확인한다.
+    doc = mcp_server.scan_sensitive_info.__doc__ or ""
+    assert "quote" in doc.lower()
+
 def test_every_tool_returns_common_schema():
     results = [
         mcp_server.scan_sensitive_info("점검용 텍스트"),

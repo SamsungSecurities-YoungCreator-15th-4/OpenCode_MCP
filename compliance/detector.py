@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass
 
@@ -137,6 +138,10 @@ class _SpanClaims:
 
 def _digits(value: str) -> str:
     return re.sub(r"\D", "", value)
+
+
+def _sha256(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _context(text: str, start: int, end: int, window: int) -> str:
@@ -286,6 +291,10 @@ def scan_text(text: str | None) -> dict:
     반환 형식은 공통 7키 스키마를 유지한다. schema.ok()의 계약대로
     outputs는 사람이 읽을 요약 문자열의 list[str]이며, masked_text·
     detected_types·log_safe_summary 같은 구조화 payload는 data에만 담는다.
+
+    data.input_hash는 원문의 SHA-256 해시다. log_ai_usage 등 감사 로그 연계
+    시 원문 대신 이 값을 넘기면, MCP tool 호출 인자 트레이스에 원문이 노출되는
+    것을 피할 수 있다.
     """
     if text is None or text == "":
         empty_summary = "scan_sensitive_info: 빈 입력"
@@ -298,6 +307,7 @@ def scan_text(text: str | None) -> dict:
                 "masked_text": "",
                 "detected_types": [],
                 "log_safe_summary": empty_summary,
+                "input_hash": _sha256(""),
             },
             outputs=[empty_summary],
             requires_human_review=False,
@@ -471,7 +481,8 @@ def scan_text(text: str | None) -> dict:
         count_text = ", ".join(f"{_type_code(kind)} {count}건" for kind, count in sorted(counts.items()))
         summary = (
             f"스캔 결과 {len(findings)}건이 탐지되었습니다 ({count_text}). "
-            "개인정보는 마스킹했으며, 외부 공유 전 사람 검토가 필요합니다."
+            "개인정보는 마스킹했으며, 외부 공유 전 사람 검토가 필요합니다. "
+            "답변에는 data.masked_text만 사용하고, 원문 입력을 그대로 인용·반복하지 마세요."
         )
 
     # outputs는 schema.ok()의 계약(list[str])을 따르는 사람이 읽을 요약이며,
@@ -486,6 +497,7 @@ def scan_text(text: str | None) -> dict:
             "masked_text": masked_text,
             "detected_types": detected_types,
             "log_safe_summary": log_safe_summary,
+            "input_hash": _sha256(text),
         },
         outputs=[log_safe_summary],
         requires_human_review=requires_human_review,

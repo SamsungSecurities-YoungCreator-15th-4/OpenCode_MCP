@@ -27,6 +27,14 @@ def scan_sensitive_info(text: str) -> dict:
     also requires human review; masking prevents plaintext exposure but does
     not mean the input is risk-free. Prohibited financial claims or
     internal/confidential keywords also require human review.
+
+    IMPORTANT: once this tool has run, never quote, repeat, or paraphrase the
+    original raw input text in your reply — even though it is still visible
+    earlier in this conversation. Refer only to data.masked_text, the finding
+    types, and the summary from this tool's result.
+
+    data.input_hash is the SHA-256 hash of the original input, provided for
+    future audit-log integrations that accept a hash instead of raw text.
     """
     return detector.scan_text(text)
 

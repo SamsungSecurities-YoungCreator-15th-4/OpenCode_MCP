@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 
 from compliance import detector, schema
@@ -284,3 +285,29 @@ def test_loss_percentage_decimal_is_not_flagged_as_no_loss_claim():
     # "손실 0.5%"처럼 손실률을 명시한 정상 문장을 "손실 없음(0)"으로 오탐하지 않는다
     result = detector.scan_text("예상 손실 0.5% 수준으로 안내드립니다.")
     assert result["data"]["findings"] == []
+
+
+def test_summary_warns_caller_against_quoting_raw_input_when_findings_exist():
+    # LLM이 tool 결과를 무시하고 대화 컨텍스트에 남은 원문을 최종 답변에 그대로
+    # 옮겨 적는 걸 막기 위해, 탐지 시 summary에 명시적으로 경고를 남긴다.
+    result = detector.scan_text("연락처는 010-1234-5678 입니다.")
+    assert "원문" in result["summary"]
+    assert "인용" in result["summary"] or "반복" in result["summary"]
+
+
+def test_scan_result_includes_input_hash_for_safe_audit_logging():
+    # 원문 대신 넘길 수 있는 해시를 제공한다 — 감사 로그 연계 tool 호출 인자에
+    # 원문이 그대로 노출되는 걸 막을 수 있도록 준비해두는 값이다.
+    text = "신청자 홍길동, 주민등록번호 900101-1234567 입니다"
+    result = detector.scan_text(text)
+
+    input_hash = result["data"]["input_hash"]
+    assert input_hash == hashlib.sha256(text.encode("utf-8")).hexdigest()
+    assert len(input_hash) == 64
+    assert "900101-1234567" not in input_hash
+    assert "홍길동" not in input_hash
+
+
+def test_empty_input_still_includes_input_hash():
+    result = detector.scan_text("")
+    assert result["data"]["input_hash"] == hashlib.sha256(b"").hexdigest()
