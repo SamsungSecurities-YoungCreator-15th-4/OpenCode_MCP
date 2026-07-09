@@ -8,6 +8,8 @@
 - result_summary는 호출자가 넘긴 값을 저장하되, LLM이 마스킹을 우회해 원문을
   재노출했을 가능성에 대비해 저장 직전 scan_text()로 한 번 더 재검증·재마스킹한다
   (호출자를 신뢰하지 않는 마지막 방어선).
+- timestamp는 KST(UTC+9) 기준으로 저장한다. 국내 전용 로컬 감사 로그라, 준법감시
+  담당자가 별도 변환 없이 바로 읽을 수 있는 걸 우선한다.
 
 표준 라이브러리(sqlite3/hashlib/datetime) + compliance.detector.scan_text만 사용한다.
 """
@@ -15,9 +17,11 @@
 import hashlib
 import os
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from compliance.detector import scan_text
+
+KST = timezone(timedelta(hours=9))
 
 GENESIS = "GENESIS"
 
@@ -119,7 +123,7 @@ def append(
     scan_result = scan_text(result_summary)
     result_summary = scan_result["data"]["masked_text"]
     rhr = 1 if (requires_human_review or scan_result["requires_human_review"]) else 0
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    timestamp = datetime.now(KST).strftime("%Y-%m-%dT%H:%M:%S+09:00")
 
     conn = _connect(db_path or _default_db_path())
     try:
