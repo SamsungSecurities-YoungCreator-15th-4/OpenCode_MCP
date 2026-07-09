@@ -331,3 +331,66 @@ def test_masked_values_text_caps_display_count_per_type():
     assert "외 1건" in log_safe_summary
     assert log_safe_summary.count("@example.com") == 5
     assert "kl***@example.com" not in log_safe_summary
+
+
+def test_findings_are_truncated_with_metadata_for_large_scan(monkeypatch):
+    monkeypatch.setenv("SCAN_MAX_FINDINGS", "3")
+    text = (
+        "담당자 이메일: ab1@example.com, cd2@example.com, ef3@example.com, "
+        "gh4@example.com, ij5@example.com 입니다"
+    )
+
+    result = detector.scan_text(text)
+    data = result["data"]
+
+    assert len(data["findings"]) == 3
+    assert data["total_findings"] == 5
+    assert data["returned_findings"] == 3
+    assert data["max_findings"] == 3
+    assert data["truncated"] is True
+    assert data["truncated_findings"] == 2
+    assert data["counts"] == {"email": 5}
+    assert "상세 반환은 3/5건으로 제한" in result["summary"]
+    assert "findings 상세 2건 생략" in data["log_safe_summary"]
+    assert isinstance(result["outputs"], list)
+    assert result["outputs"] == [data["log_safe_summary"]]
+
+    # masked_text는 호환성을 위해 전체 마스킹 결과를 유지하되 원문은 노출하지 않는다.
+    assert "ij5@example.com" not in _dump(result)
+    assert "ij***@example.com" in data["masked_text"]
+
+
+def test_invalid_findings_limit_falls_back_to_default(monkeypatch):
+    monkeypatch.setenv("SCAN_MAX_FINDINGS", "not-a-number")
+
+    result = detector.scan_text("담당자 연락처는 010-1234-5678입니다.")
+
+    assert result["data"]["max_findings"] == 100
+    assert result["data"]["returned_findings"] == 1
+    assert result["data"]["truncated"] is False
+
+
+def test_zero_findings_limit_returns_metadata_only(monkeypatch):
+    monkeypatch.setenv("SCAN_MAX_FINDINGS", "0")
+
+    result = detector.scan_text("담당자 연락처는 010-1234-5678입니다.")
+    data = result["data"]
+
+    assert data["findings"] == []
+    assert data["total_findings"] == 1
+    assert data["returned_findings"] == 0
+    assert data["max_findings"] == 0
+    assert data["truncated"] is True
+    assert data["truncated_findings"] == 1
+    assert data["masked_text"] == "담당자 연락처는 010-****-5678입니다."
+    assert "findings 상세 1건 생략" in data["log_safe_summary"]
+
+
+def test_negative_findings_limit_falls_back_to_default(monkeypatch):
+    monkeypatch.setenv("SCAN_MAX_FINDINGS", "-1")
+
+    result = detector.scan_text("담당자 연락처는 010-1234-5678입니다.")
+
+    assert result["data"]["max_findings"] == 100
+    assert result["data"]["returned_findings"] == 1
+    assert result["data"]["truncated"] is False
