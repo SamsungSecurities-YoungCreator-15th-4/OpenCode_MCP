@@ -284,3 +284,33 @@ def test_loss_percentage_decimal_is_not_flagged_as_no_loss_claim():
     # "손실 0.5%"처럼 손실률을 명시한 정상 문장을 "손실 없음(0)"으로 오탐하지 않는다
     result = detector.scan_text("예상 손실 0.5% 수준으로 안내드립니다.")
     assert result["data"]["findings"] == []
+
+
+def test_summary_and_log_safe_summary_include_masked_values_for_every_type():
+    # 계좌번호뿐 아니라 전화번호/이메일/주민번호도 마스킹된 값이 요약에 함께
+    # 노출되어야 사람이 결과만 보고 무엇이 탐지됐는지 바로 확인할 수 있다.
+    result = detector.scan_text(
+        "신청자 홍길동, 주민등록번호 900101-1234567, 연락처 010-1234-5678, "
+        "이메일 hong@example.com 입니다"
+    )
+
+    summary = result["summary"]
+    log_safe_summary = result["data"]["log_safe_summary"]
+
+    for masked_value in ("900101-1******", "010-****-5678", "ho***@example.com"):
+        assert masked_value in summary
+        assert masked_value in log_safe_summary
+
+    # 원문 값은 어디에도 남지 않아야 한다
+    assert "900101-1234567" not in _dump(result)
+    assert "010-1234-5678" not in _dump(result)
+    assert "hong@example.com" not in _dump(result)
+
+
+def test_masked_values_text_dedupes_repeated_values_within_same_type():
+    result = detector.scan_text(
+        "이 상품은 원금 보장되고 확정 수익을 제공합니다."
+    )
+    # principal_guarantee/guaranteed_return 둘 다 prohibited_claim 타입이라
+    # value_masked가 "[금지표현]"으로 동일 — 중복 없이 한 번만 표시되어야 한다.
+    assert result["data"]["log_safe_summary"].count("[금지표현]") == 1
