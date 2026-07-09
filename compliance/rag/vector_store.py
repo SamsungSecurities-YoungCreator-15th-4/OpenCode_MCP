@@ -19,11 +19,6 @@ COLLECTION = "compliance_rules"
 _META_KEYS = ("source", "article", "article_title", "chunk_id", "category", "file_name")
 
 
-def _cosine_similarity(distance: float) -> float:
-    """Chroma cosine distance를 사람이 해석하기 쉬운 유사도로 변환한다."""
-    return max(-1.0, min(1.0, 1.0 - distance))
-
-
 def _to_meta(chunk: dict) -> dict:
     meta = {}
     for key in _META_KEYS:
@@ -106,21 +101,11 @@ class VectorStore:
         from compliance.rag.embedder import embed_texts
 
         result = self._collection.query(
-            query_embeddings=[embed_texts([query])[0]],
-            n_results=top_k,
-            include=["documents", "metadatas", "distances"],
+            query_embeddings=[embed_texts([query])[0]], n_results=top_k
         )
         ids = result["ids"][0]
         documents = result["documents"][0]
         metadatas = result["metadatas"][0]
-        distances_list = result.get("distances")
-        distances = distances_list[0] if distances_list else []
-        hits = []
-        for i in range(len(ids)):
-            item = _from_meta(documents[i], metadatas[i], ids[i])
-            if i < len(distances):
-                distance = float(distances[i])
-                item["vector_distance"] = distance
-                item["vector_similarity"] = _cosine_similarity(distance)
-            hits.append(item)
-        return hits
+        return [
+            _from_meta(documents[i], metadatas[i], ids[i]) for i in range(len(ids))
+        ]
