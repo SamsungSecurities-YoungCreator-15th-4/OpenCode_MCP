@@ -153,7 +153,11 @@ def test_corpus_loader_supports_text_files(tmp_path):
 
 
 def test_reciprocal_rank_fusion_math_and_keys():
-    vector_ranked = [{"chunk_id": "a"}, {"chunk_id": "b"}, {"chunk_id": "c"}]
+    vector_ranked = [
+        {"chunk_id": "a", "vector_similarity": 0.9, "vector_distance": 0.1},
+        {"chunk_id": "b", "vector_similarity": 0.8, "vector_distance": 0.2},
+        {"chunk_id": "c", "vector_similarity": 0.7, "vector_distance": 0.3},
+    ]
     bm25_ranked = [{"chunk_id": "b"}, {"chunk_id": "a"}, {"chunk_id": "d"}]
 
     merged = reciprocal_rank_fusion([vector_ranked, bm25_ranked], top_k=3, rrf_k=60)
@@ -164,6 +168,7 @@ def test_reciprocal_rank_fusion_math_and_keys():
     assert set(top_ids) == {"a", "b"}
     # 병합 결과에는 score 키가 붙는다.
     assert all("score" in m for m in merged)
+    assert next(m for m in merged if m["chunk_id"] == "a")["vector_similarity"] == 0.9
     # a의 점수 = 1/(60+1) + 1/(60+2) 로 정확히 계산된다.
     a_score = next(m["score"] for m in merged if m["chunk_id"] == "a")
     assert a_score == pytest.approx(1 / 61 + 1 / 62)
@@ -208,6 +213,32 @@ def test_rebuild_resets_persistent_collection(tmp_path):
     assert {h["chunk_id"] for h in hits} == {c["chunk_id"] for c in corpus_b}
 
 
+def test_vector_search_tolerates_none_distances(monkeypatch):
+    from compliance.rag.vector_store import VectorStore
+
+    class FakeCollection:
+        def count(self):
+            return 1
+
+        def query(self, query_embeddings, n_results, include):
+            return {
+                "ids": [["chunk-1"]],
+                "documents": [["제1조(목적) 테스트 조항입니다."]],
+                "metadatas": [[{"article": "제1조", "chunk_id": "chunk-1"}]],
+                "distances": None,
+            }
+
+    monkeypatch.setattr("compliance.rag.embedder.embed_texts", lambda texts: [[0.0]])
+    store = VectorStore.__new__(VectorStore)
+    store._collection = FakeCollection()
+
+    hits = store.vector_search("테스트", top_k=1)
+
+    assert hits[0]["chunk_id"] == "chunk-1"
+    assert "vector_distance" not in hits[0]
+    assert "vector_similarity" not in hits[0]
+
+
 # --- 4. hybrid_search 반환 항목이 요구된 키를 모두 포함 -----------------------
 
 
@@ -222,6 +253,12 @@ def test_search_result_has_required_keys():
 
     assert results
     for item in results:
-        assert set(item) == REQUIRED_KEYS | {"score"}
+        assert set(item) == REQUIRED_KEYS | {
+            "score",
+            "vector_distance",
+            "vector_similarity",
+        }
         assert item["category"] is None
         assert isinstance(item["score"], float)
+        assert isinstance(item["vector_distance"], float)
+        assert isinstance(item["vector_similarity"], float)
