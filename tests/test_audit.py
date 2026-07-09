@@ -142,3 +142,29 @@ def test_same_input_yields_different_record_hash(tmp_path):
     # 그러나 prev_hash가 달라(첫째는 GENESIS, 둘째는 r1 해시) record_hash는 다르다.
     assert r1["prev_hash"] != r2["prev_hash"]
     assert r1["record_hash"] != r2["record_hash"]
+
+
+# --- 7. result_summary에 원문이 섞여도 저장 전 재마스킹된다 -------------------
+# (LLM이 scan 마스킹을 우회해 원문을 재노출한 result_summary를 넘기는 경우 대비)
+
+
+def test_result_summary_is_remasked_before_storage(tmp_path):
+    db = _db(tmp_path)
+    leaked_summary = "계좌번호가 위험합니다: 110-222-333333"
+    r = logger.append("scan_sensitive_info", "원문", leaked_summary, True, db_path=db)
+
+    # 반환값의 result_summary가 마스킹된 버전으로 치환되어 있다.
+    assert "110-222-333333" not in r["result_summary"]
+    assert "***3333" in r["result_summary"]
+
+    # DB 파일 원본 바이트에도 원문 계좌번호가 없다.
+    with open(db, "rb") as fh:
+        assert b"110-222-333333" not in fh.read()
+
+
+def test_result_summary_without_sensitive_info_is_unchanged(tmp_path):
+    db = _db(tmp_path)
+    clean_summary = "민감정보가 탐지되지 않았습니다."
+    r = logger.append("scan_sensitive_info", "원문", clean_summary, False, db_path=db)
+
+    assert r["result_summary"] == clean_summary

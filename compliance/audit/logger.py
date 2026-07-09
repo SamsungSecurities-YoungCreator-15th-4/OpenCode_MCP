@@ -5,15 +5,19 @@
 
 원칙(팀 확정):
 - 원문·민감값은 저장하지 않는다. input_text는 즉시 SHA-256으로만 남기고 버린다.
-- result_summary는 호출자가 넘긴 값을 그대로 저장한다(이 모듈은 요약을 만들지 않는다).
+- result_summary는 호출자가 넘긴 값을 저장하되, LLM이 마스킹을 우회해 원문을
+  재노출했을 가능성에 대비해 저장 직전 scan_text()로 한 번 더 재검증·재마스킹한다
+  (호출자를 신뢰하지 않는 마지막 방어선).
 
-표준 라이브러리(sqlite3/hashlib/datetime)만 사용한다.
+표준 라이브러리(sqlite3/hashlib/datetime) + compliance.detector.scan_text만 사용한다.
 """
 
 import hashlib
 import os
 import sqlite3
 from datetime import datetime, timezone
+
+from compliance.detector import scan_text
 
 GENESIS = "GENESIS"
 
@@ -104,9 +108,13 @@ def append(
     """새 레코드를 체인 끝에 추가하고 저장된 레코드(원문 제외)를 dict로 반환한다.
 
     input_text는 여기서 SHA-256으로만 남기고 원문 문자열은 DB에 저장하지 않는다.
+    result_summary는 호출자(LLM)가 이미 마스킹했다고 신뢰하지 않고, 저장 직전
+    scan_text()로 다시 스캔해 마스킹된 버전으로 치환한다 — 호출자가 마스킹을
+    빠뜨리거나 원문을 재노출해도 감사 로그에는 항상 안전한 텍스트만 남는다.
     """
     input_hash = _sha256(input_text)
     # 이후로 input_text 원문은 사용하지 않는다(해시만 보관).
+    result_summary = scan_text(result_summary)["data"]["masked_text"]
     rhr = 1 if requires_human_review else 0
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
