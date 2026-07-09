@@ -23,9 +23,10 @@ def scan_sensitive_info(text: str) -> dict:
     The returned result never contains original sensitive values. Use
     data.masked_text when showing the scanned text to the user. If this scan
     result is later recorded with log_ai_usage, pass data.log_safe_summary as
-    result_summary, not the original input text. General personal information
-    that is fully masked does not require human review; prohibited financial
-    claims or internal/confidential keywords do.
+    result_summary, not the original input text. Detected personal information
+    also requires human review; masking prevents plaintext exposure but does
+    not mean the input is risk-free. Prohibited financial claims or
+    internal/confidential keywords also require human review.
     """
     return detector.scan_text(text)
 
