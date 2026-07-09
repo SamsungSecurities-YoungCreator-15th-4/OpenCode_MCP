@@ -23,6 +23,11 @@ _ACCOUNT_KEYWORD_WINDOW = 24
 # 하이픈/공백이 없으면 주변 키워드를 요구한다.
 _RRN_KEYWORD_WINDOW = 18
 
+# summary/log_safe_summary에 타입별로 나열하는 마스킹 값의 최대 개수.
+# 대량 탐지 시 요약 문자열이 무한정 길어져 가독성이 떨어지거나 감사 로그 저장소의
+# 컬럼 길이 제한을 초과하는 걸 막기 위한 상한이다.
+_MAX_MASKED_VALUES_PER_TYPE = 5
+
 # re.ASCII:
 # \b 대신 (?<!\d), (?!\d)를 주로 사용해 한글 조사("입니다", "으로")가 붙어도 탐지되도록 한다.
 _RRN_RE = re.compile(r"(?<!\d)(\d{6})([-\s]?)([0-9]\d{6})(?!\d)", re.ASCII)
@@ -233,20 +238,45 @@ def _count_by_type(findings: list[dict]) -> dict[str, int]:
     return counts
 
 
+def _masked_values_text(findings: list[dict]) -> str:
+    """탐지 타입별로 마스킹된 값을 나열한 문자열을 만든다.
+
+    value_masked는 이미 마스킹되어 원문을 복원할 수 없으므로 요약·로그에 그대로
+    노출해도 안전하다. 같은 타입에 값이 여러 건이면 " / "로 묶고, 중복 값은
+    한 번만 표시한다. 대량 탐지 시 요약이 무한정 길어지지 않도록 타입별로
+    최대 _MAX_MASKED_VALUES_PER_TYPE개까지만 나열하고 나머지는 "외 N건"으로 축약한다.
+    """
+    grouped: dict[str, list[str]] = {}
+    for finding in findings:
+        values = grouped.setdefault(finding["type_code"], [])
+        if finding["value_masked"] not in values:
+            values.append(finding["value_masked"])
+
+    parts = []
+    for type_code, values in sorted(grouped.items()):
+        shown = values[:_MAX_MASKED_VALUES_PER_TYPE]
+        remaining = len(values) - len(shown)
+        text = f"{type_code} {' / '.join(shown)}"
+        if remaining > 0:
+            text += f" 외 {remaining}건"
+        parts.append(text)
+
+    return ", ".join(parts)
+
+
 def _log_safe_summary(findings: list[dict], requires_human_review: bool) -> str:
     """log_ai_usage의 result_summary에 넘겨도 안전한 요약.
 
-    원문 텍스트나 masked_text 전체를 넣지 않는다.
-    masked_text에도 비정형 내부자료 문장이 남을 수 있으므로, 감사 로그용 요약은
-    탐지 타입/건수만 담는다.
+    원문 텍스트나 masked_text 전체를 넣지 않는다. 대신 이미 마스킹되어 안전한
+    value_masked를 타입별로 나열해, 어떤 종류의 값이 몇 건 어떻게 마스킹됐는지
+    사람이 바로 확인할 수 있게 한다.
     """
     if not findings:
         return "scan_sensitive_info: 탐지된 민감정보/금지문구 없음"
 
-    counts = _count_by_type(findings)
-    count_text = ", ".join(f"{_type_code(kind)} {count}건" for kind, count in sorted(counts.items()))
+    values_text = _masked_values_text(findings)
     review_text = "사람 검토 필요" if requires_human_review else "자동 마스킹 완료"
-    return f"scan_sensitive_info: {count_text}; {review_text}"
+    return f"scan_sensitive_info: {values_text}; {review_text}"
 
 
 def _add_finding(
@@ -468,9 +498,9 @@ def scan_text(text: str | None) -> dict:
     if not findings:
         summary = "민감정보·금융 금지문구 패턴이 탐지되지 않았습니다."
     else:
-        count_text = ", ".join(f"{_type_code(kind)} {count}건" for kind, count in sorted(counts.items()))
+        values_text = _masked_values_text(findings)
         summary = (
-            f"스캔 결과 {len(findings)}건이 탐지되었습니다 ({count_text}). "
+            f"스캔 결과 {len(findings)}건이 탐지되었습니다 ({values_text}). "
             "개인정보는 마스킹했으며, 외부 공유 전 사람 검토가 필요합니다."
         )
 
