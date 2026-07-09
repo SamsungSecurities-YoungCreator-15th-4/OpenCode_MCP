@@ -111,11 +111,14 @@ def append(
     result_summary는 호출자(LLM)가 이미 마스킹했다고 신뢰하지 않고, 저장 직전
     scan_text()로 다시 스캔해 마스킹된 버전으로 치환한다 — 호출자가 마스킹을
     빠뜨리거나 원문을 재노출해도 감사 로그에는 항상 안전한 텍스트만 남는다.
+    이 재스캔에서 민감정보가 실제로 발견되면(=호출자가 유출을 시도했다는 뜻),
+    호출자가 requires_human_review=False를 넘겼더라도 True로 강제 승격한다.
     """
     input_hash = _sha256(input_text)
     # 이후로 input_text 원문은 사용하지 않는다(해시만 보관).
-    result_summary = scan_text(result_summary)["data"]["masked_text"]
-    rhr = 1 if requires_human_review else 0
+    scan_result = scan_text(result_summary)
+    result_summary = scan_result["data"]["masked_text"]
+    rhr = 1 if (requires_human_review or scan_result["requires_human_review"]) else 0
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     conn = _connect(db_path or _default_db_path())
