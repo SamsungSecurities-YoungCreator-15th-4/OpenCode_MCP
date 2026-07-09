@@ -123,7 +123,7 @@ def append(
     scan_result = scan_text(result_summary)
     result_summary = scan_result["data"]["masked_text"]
     rhr = 1 if (requires_human_review or scan_result["requires_human_review"]) else 0
-    timestamp = datetime.now(KST).strftime("%Y-%m-%dT%H:%M:%S+09:00")
+    timestamp = datetime.now(KST).isoformat(timespec="seconds")
 
     conn = _connect(db_path or _default_db_path())
     try:
