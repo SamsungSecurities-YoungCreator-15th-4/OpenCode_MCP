@@ -17,10 +17,17 @@ mcp = FastMCP("compliance-assistant")
 
 @mcp.tool()
 def scan_sensitive_info(text: str) -> dict:
-    """Scan text for sensitive information (Korean resident registration
-    numbers, phone numbers, card numbers, emails, account numbers,
-    confidential keywords) before sharing it externally.
-    Returns masked findings only — never the original values."""
+    """Scan text for sensitive information and financial prohibited claims before
+    sharing it externally.
+
+    The returned result never contains original sensitive values. Use
+    data.masked_text when showing the scanned text to the user. If this scan
+    result is later recorded with log_ai_usage, pass data.log_safe_summary as
+    result_summary, not the original input text. Detected personal information
+    also requires human review; masking prevents plaintext exposure but does
+    not mean the input is risk-free. Prohibited financial claims or
+    internal/confidential keywords also require human review.
+    """
     return detector.scan_text(text)
 
 

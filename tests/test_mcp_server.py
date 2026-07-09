@@ -54,11 +54,18 @@ def test_exactly_four_tools_registered():
 
 def test_scan_sensitive_info_uses_real_detector():
     result = mcp_server.scan_sensitive_info("담당자 연락처는 010-1234-5678 입니다.")
+
     assert result["ok"] is True
-    assert result["tool"] == "scan_sensitive_info"
     assert result["data"]["findings"][0]["type"] == "phone"
+    assert result["data"]["masked_text"] == "담당자 연락처는 010-****-5678 입니다."
     assert result["requires_human_review"] is True
 
+def test_scan_sensitive_info_requires_review_for_prohibited_claim():
+    result = mcp_server.scan_sensitive_info("이 상품은 원금 보장되고 확정 수익을 제공합니다.")
+
+    assert result["ok"] is True
+    assert result["data"]["detected_types"] == ["PROHIBITED_CLAIM"]
+    assert result["requires_human_review"] is True
 
 def test_every_tool_returns_common_schema():
     results = [
