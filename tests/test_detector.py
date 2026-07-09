@@ -314,3 +314,20 @@ def test_masked_values_text_dedupes_repeated_values_within_same_type():
     # principal_guarantee/guaranteed_return 둘 다 prohibited_claim 타입이라
     # value_masked가 "[금지표현]"으로 동일 — 중복 없이 한 번만 표시되어야 한다.
     assert result["data"]["log_safe_summary"].count("[금지표현]") == 1
+
+
+def test_masked_values_text_caps_display_count_per_type():
+    # 대량 탐지 시 요약 문자열이 무한정 길어지지 않도록 타입별 최대 5개까지만
+    # 나열하고 나머지는 "외 N건"으로 축약한다.
+    text = (
+        "담당자 이메일: ab1@example.com, cd2@example.com, ef3@example.com, "
+        "gh4@example.com, ij5@example.com, kl6@example.com 입니다"
+    )
+    result = detector.scan_text(text)
+
+    assert len(result["data"]["findings"]) == 6
+
+    log_safe_summary = result["data"]["log_safe_summary"]
+    assert "외 1건" in log_safe_summary
+    assert log_safe_summary.count("@example.com") == 5
+    assert "kl***@example.com" not in log_safe_summary

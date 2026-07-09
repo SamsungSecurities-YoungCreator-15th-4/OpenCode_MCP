@@ -23,6 +23,11 @@ _ACCOUNT_KEYWORD_WINDOW = 24
 # 하이픈/공백이 없으면 주변 키워드를 요구한다.
 _RRN_KEYWORD_WINDOW = 18
 
+# summary/log_safe_summary에 타입별로 나열하는 마스킹 값의 최대 개수.
+# 대량 탐지 시 요약 문자열이 무한정 길어져 가독성이 떨어지거나 감사 로그 저장소의
+# 컬럼 길이 제한을 초과하는 걸 막기 위한 상한이다.
+_MAX_MASKED_VALUES_PER_TYPE = 5
+
 # re.ASCII:
 # \b 대신 (?<!\d), (?!\d)를 주로 사용해 한글 조사("입니다", "으로")가 붙어도 탐지되도록 한다.
 _RRN_RE = re.compile(r"(?<!\d)(\d{6})([-\s]?)([0-9]\d{6})(?!\d)", re.ASCII)
@@ -238,7 +243,8 @@ def _masked_values_text(findings: list[dict]) -> str:
 
     value_masked는 이미 마스킹되어 원문을 복원할 수 없으므로 요약·로그에 그대로
     노출해도 안전하다. 같은 타입에 값이 여러 건이면 " / "로 묶고, 중복 값은
-    한 번만 표시한다.
+    한 번만 표시한다. 대량 탐지 시 요약이 무한정 길어지지 않도록 타입별로
+    최대 _MAX_MASKED_VALUES_PER_TYPE개까지만 나열하고 나머지는 "외 N건"으로 축약한다.
     """
     grouped: dict[str, list[str]] = {}
     for finding in findings:
@@ -246,7 +252,16 @@ def _masked_values_text(findings: list[dict]) -> str:
         if finding["value_masked"] not in values:
             values.append(finding["value_masked"])
 
-    return ", ".join(f"{type_code} {' / '.join(values)}" for type_code, values in sorted(grouped.items()))
+    parts = []
+    for type_code, values in sorted(grouped.items()):
+        shown = values[:_MAX_MASKED_VALUES_PER_TYPE]
+        remaining = len(values) - len(shown)
+        text = f"{type_code} {' / '.join(shown)}"
+        if remaining > 0:
+            text += f" 외 {remaining}건"
+        parts.append(text)
+
+    return ", ".join(parts)
 
 
 def _log_safe_summary(findings: list[dict], requires_human_review: bool) -> str:
