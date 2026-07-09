@@ -368,3 +368,29 @@ def test_invalid_findings_limit_falls_back_to_default(monkeypatch):
     assert result["data"]["max_findings"] == 100
     assert result["data"]["returned_findings"] == 1
     assert result["data"]["truncated"] is False
+
+
+def test_zero_findings_limit_returns_metadata_only(monkeypatch):
+    monkeypatch.setenv("SCAN_MAX_FINDINGS", "0")
+
+    result = detector.scan_text("담당자 연락처는 010-1234-5678입니다.")
+    data = result["data"]
+
+    assert data["findings"] == []
+    assert data["total_findings"] == 1
+    assert data["returned_findings"] == 0
+    assert data["max_findings"] == 0
+    assert data["truncated"] is True
+    assert data["truncated_findings"] == 1
+    assert data["masked_text"] == "담당자 연락처는 010-****-5678입니다."
+    assert "findings 상세 1건 생략" in data["log_safe_summary"]
+
+
+def test_negative_findings_limit_falls_back_to_default(monkeypatch):
+    monkeypatch.setenv("SCAN_MAX_FINDINGS", "-1")
+
+    result = detector.scan_text("담당자 연락처는 010-1234-5678입니다.")
+
+    assert result["data"]["max_findings"] == 100
+    assert result["data"]["returned_findings"] == 1
+    assert result["data"]["truncated"] is False

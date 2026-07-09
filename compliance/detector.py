@@ -249,9 +249,12 @@ def _max_findings() -> int:
     if raw is None:
         return _DEFAULT_MAX_FINDINGS
     try:
-        return max(1, int(raw))
+        value = int(raw)
     except ValueError:
         return _DEFAULT_MAX_FINDINGS
+    if value < 0:
+        return _DEFAULT_MAX_FINDINGS
+    return value
 
 
 def _masked_values_text(findings: list[dict]) -> str:
