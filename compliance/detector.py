@@ -141,7 +141,7 @@ def _digits(value: str) -> str:
 
 
 def _sha256(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
 
 
 def _context(text: str, start: int, end: int, window: int) -> str:

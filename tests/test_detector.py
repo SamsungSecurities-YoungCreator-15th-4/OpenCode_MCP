@@ -311,3 +311,9 @@ def test_scan_result_includes_input_hash_for_safe_audit_logging():
 def test_empty_input_still_includes_input_hash():
     result = detector.scan_text("")
     assert result["data"]["input_hash"] == hashlib.sha256(b"").hexdigest()
+
+
+def test_invalid_surrogate_input_does_not_crash():
+    # 유효하지 않은 유니코드 대리 쌍 문자가 포함되어도 UnicodeEncodeError 없이 처리되어야 한다.
+    result = detector.scan_text("\ud800")
+    assert len(result["data"]["input_hash"]) == 64
