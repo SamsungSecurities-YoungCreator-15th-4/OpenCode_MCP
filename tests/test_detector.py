@@ -16,9 +16,13 @@ def test_clean_text_has_no_findings():
 
     assert result["ok"] is True
     assert result["data"]["findings"] == []
-    assert result["outputs"]["masked_text"] == "오늘 회의는 오후 3시에 진행합니다."
-    assert result["outputs"]["detected_types"] == []
+    assert result["data"]["masked_text"] == "오늘 회의는 오후 3시에 진행합니다."
+    assert result["data"]["detected_types"] == []
     assert result["requires_human_review"] is False
+
+    # outputs는 schema.ok() 계약대로 사람이 읽을 요약 문자열의 list[str]이어야 한다
+    assert isinstance(result["outputs"], list)
+    assert all(isinstance(item, str) for item in result["outputs"])
 
 
 def test_empty_and_none_inputs_are_ok_not_error():
@@ -28,8 +32,9 @@ def test_empty_and_none_inputs_are_ok_not_error():
         assert result["ok"] is True
         assert result["error"] is None
         assert result["data"]["findings"] == []
-        assert result["outputs"]["masked_text"] == ""
+        assert result["data"]["masked_text"] == ""
         assert result["requires_human_review"] is False
+        assert isinstance(result["outputs"], list)
 
 
 def test_result_follows_common_seven_key_schema():
@@ -47,8 +52,8 @@ def test_rrn_detected_masked_and_does_not_force_review_when_masked():
     assert findings[0]["type"] == "rrn"
     assert findings[0]["type_code"] == "RRN"
     assert findings[0]["value_masked"] == "900101-1******"
-    assert result["outputs"]["masked_text"] == "고객 주민등록번호는 900101-1****** 입니다."
-    assert result["outputs"]["detected_types"] == ["RRN"]
+    assert result["data"]["masked_text"] == "고객 주민등록번호는 900101-1****** 입니다."
+    assert result["data"]["detected_types"] == ["RRN"]
 
     # 일반 개인정보가 완전히 마스킹된 경우는 P4 합의에 따라 false
     assert result["requires_human_review"] is False
@@ -67,10 +72,16 @@ def test_foreigner_rrn_detected_and_masked():
     assert "5234567" not in _dump(result)
 
 
-def test_plain_13_digits_without_rrn_keyword_not_flagged_as_rrn():
+def test_plain_13_digits_without_rrn_keyword_kept_as_low_confidence():
+    # 키워드 없는 연속 13자리도 생년월일 형태면 완전히 놓치지 않고 낮은 신뢰도로
+    # 남긴다 — 준법 도구에서는 미탐 비용이 오탐 비용보다 크다.
     result = detector.scan_text("문서번호 9001011234567 확인 바랍니다.")
 
-    assert result["data"]["findings"] == []
+    findings = result["data"]["findings"]
+    assert len(findings) == 1
+    assert findings[0]["type"] == "rrn"
+    assert findings[0]["confidence"] == "low"
+    assert "1234567" not in _dump(result)
 
 
 def test_phone_detected_and_masked_with_korean_postposition():
@@ -80,7 +91,7 @@ def test_phone_detected_and_masked_with_korean_postposition():
     assert len(findings) == 1
     assert findings[0]["type"] == "phone"
     assert findings[0]["value_masked"] == "010-****-5678"
-    assert result["outputs"]["masked_text"] == "담당자 연락처는 010-****-5678입니다."
+    assert result["data"]["masked_text"] == "담당자 연락처는 010-****-5678입니다."
     assert "010-1234-5678" not in _dump(result)
     assert result["requires_human_review"] is False
 
@@ -92,7 +103,7 @@ def test_email_detected_and_masked_with_korean_postposition():
     assert len(findings) == 1
     assert findings[0]["type"] == "email"
     assert findings[0]["value_masked"] == "gi***@example.com"
-    assert result["outputs"]["masked_text"] == "자료는 gi***@example.com으로 회신 바랍니다."
+    assert result["data"]["masked_text"] == "자료는 gi***@example.com으로 회신 바랍니다."
     assert "gildong.hong@example.com" not in _dump(result)
     assert result["requires_human_review"] is False
 
@@ -128,11 +139,11 @@ def test_account_with_virtual_account_pattern_detected():
     types = [finding["type"] for finding in findings]
 
     assert types == ["email", "account"]
-    assert result["outputs"]["detected_types"] == ["ACCOUNT", "EMAIL"]
+    assert result["data"]["detected_types"] == ["ACCOUNT", "EMAIL"]
     assert "hong@example.com" not in _dump(result)
     assert "110-2222-3333333" not in _dump(result)
-    assert "ho***@example.com" in result["outputs"]["masked_text"]
-    assert "***3333" in result["outputs"]["masked_text"]
+    assert "ho***@example.com" in result["data"]["masked_text"]
+    assert "***3333" in result["data"]["masked_text"]
     assert result["requires_human_review"] is False
 
 
@@ -167,11 +178,11 @@ def test_prohibited_financial_claim_requires_human_review():
         "prohibited_claim",
         "prohibited_claim",
     ]
-    assert result["outputs"]["detected_types"] == ["PROHIBITED_CLAIM"]
-    assert "[금지표현]" in result["outputs"]["masked_text"]
+    assert result["data"]["detected_types"] == ["PROHIBITED_CLAIM"]
+    assert "[금지표현]" in result["data"]["masked_text"]
     assert result["requires_human_review"] is True
-    assert "원금 보장" not in result["outputs"]["masked_text"]
-    assert "확정 수익" not in result["outputs"]["masked_text"]
+    assert "원금 보장" not in result["data"]["masked_text"]
+    assert "확정 수익" not in result["data"]["masked_text"]
 
 
 def test_internal_keyword_requires_human_review():
@@ -183,7 +194,7 @@ def test_internal_keyword_requires_human_review():
         "internal_keyword",
     ]
     assert result["requires_human_review"] is True
-    assert "[내부정보키워드]" in result["outputs"]["masked_text"]
+    assert "[내부정보키워드]" in result["data"]["masked_text"]
 
 
 def test_mixed_personal_info_and_prohibited_claim():
@@ -191,9 +202,9 @@ def test_mixed_personal_info_and_prohibited_claim():
         "고객 연락처는 010-1234-5678이고, 이 상품은 손실 없음이라고 안내했습니다."
     )
 
-    assert result["outputs"]["detected_types"] == ["PHONE", "PROHIBITED_CLAIM"]
+    assert result["data"]["detected_types"] == ["PHONE", "PROHIBITED_CLAIM"]
     assert "010-1234-5678" not in _dump(result)
-    assert "손실 없음" not in result["outputs"]["masked_text"]
+    assert "손실 없음" not in result["data"]["masked_text"]
     assert result["requires_human_review"] is True
 
 
@@ -237,6 +248,39 @@ def test_prohibited_claim_detects_reversed_word_order_and_particles():
     types = [finding["type"] for finding in findings]
     assert types == ["prohibited_claim", "prohibited_claim", "prohibited_claim"]
     assert result["requires_human_review"] is True
-    assert "수익률 보장" not in result["outputs"]["masked_text"]
-    assert "손실이 없음" not in result["outputs"]["masked_text"]
-    assert "위험은 없음" not in result["outputs"]["masked_text"]
+    assert "수익률 보장" not in result["data"]["masked_text"]
+    assert "손실이 없음" not in result["data"]["masked_text"]
+    assert "위험은 없음" not in result["data"]["masked_text"]
+
+
+def test_principal_guarantee_negation_is_not_flagged():
+    # "원금 보장되지 않습니다"류는 오히려 정상적인 위험 고지 문장이므로 제외한다
+    negated = detector.scan_text("이 상품은 원금 보장되지 않습니다.")
+    assert negated["data"]["findings"] == []
+
+    negated_with_particle = detector.scan_text(
+        "원금 보호가 되지 않는 투자상품입니다."
+    )
+    assert negated_with_particle["data"]["findings"] == []
+
+    # 부정 표현이 없는 정상적인 금지문구는 여전히 탐지되어야 한다
+    positive = detector.scan_text("이 상품은 원금 보장이 되어 있습니다.")
+    assert [f["type"] for f in positive["data"]["findings"]] == ["prohibited_claim"]
+
+
+def test_internal_keyword_word_boundary_excludes_compound_words():
+    # "발간 전"/"공개 전"이 다른 한글 단어의 일부일 때는 내부정보 키워드로 잡지 않는다
+    result = detector.scan_text(
+        "정보 공개 전략 회의와 서비스 공개 전환 일정, 보고서 발간 전담팀 안내입니다."
+    )
+    assert result["data"]["findings"] == []
+
+    # 문맥어가 뒤따르지 않는 독립적인 "발간 전"은 여전히 탐지되어야 한다
+    still_detected = detector.scan_text("이 문서는 발간 전 자료입니다.")
+    assert [f["type"] for f in still_detected["data"]["findings"]] == ["internal_keyword"]
+
+
+def test_loss_percentage_decimal_is_not_flagged_as_no_loss_claim():
+    # "손실 0.5%"처럼 손실률을 명시한 정상 문장을 "손실 없음(0)"으로 오탐하지 않는다
+    result = detector.scan_text("예상 손실 0.5% 수준으로 안내드립니다.")
+    assert result["data"]["findings"] == []

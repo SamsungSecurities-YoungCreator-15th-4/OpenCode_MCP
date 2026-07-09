@@ -73,7 +73,11 @@ _RRN_KEYWORD_RE = re.compile(
 
 # 금융상품 광고/고객 발송 문구에서 사람 검토가 필요한 금지·주의 표현
 _PROHIBITED_CLAIM_PATTERNS: list[tuple[str, str, str]] = [
-    ("principal_guarantee", r"원금\s*(?:이\s*)?(?:보장|보전|보호)", "원금보장 오인 가능 표현"),
+    (
+        "principal_guarantee",
+        r"원금\s*(?:이\s*)?(?:보장|보전|보호)(?!\s*(?:이\s*|가\s*)?(?:되지\s*않|안\s*(?:됨|되)|불가))",
+        "원금보장 오인 가능 표현",
+    ),
     (
         "guaranteed_return",
         r"(?:확정|보장)\s*(?:수익|수익률|이자)|(?:수익|수익률|이자)\s*(?:이\s*)?(?:확정|보장)",
@@ -81,10 +85,10 @@ _PROHIBITED_CLAIM_PATTERNS: list[tuple[str, str, str]] = [
     ),
     (
         "no_loss",
-        r"(?:손실\s*(?:이\s*|은\s*)?(?:없음|제로|0)|무손실|손해\s*(?:가\s*|는\s*)?없음)",
+        r"(?:손실\s*(?:이\s*|은\s*)?(?:없음|제로)|무손실|손해\s*(?:가\s*|는\s*)?없음)",
         "손실 가능성 축소 표현",
     ),
-    ("risk_free", r"(?:무위험|위험\s*(?:이\s*|은\s*)?(?:없음|제로|0))", "위험성 축소 표현"),
+    ("risk_free", r"(?:무위험|위험\s*(?:이\s*|은\s*)?(?:없음|제로))", "위험성 축소 표현"),
     ("high_return_stable", r"(?:안정적\s*)?고수익", "고수익 과장 가능 표현"),
     ("always_profit", r"(?:무조건|반드시|100%)\s*(?:수익|상승|오름)", "단정적 수익 표현"),
 ]
@@ -96,7 +100,7 @@ _PROHIBITED_CLAIM_RES: list[tuple[str, re.Pattern[str], str]] = [
 
 # 개인정보는 아니지만, 외부 공유 전 사람이 확인해야 하는 비정형 리스크 신호
 _INTERNAL_RE = re.compile(
-    r"대외비|내부자료|사외반출금지|미공개|발간\s?전|공개\s?전|confidential",
+    r"대외비|내부자료|사외반출금지|미공개|발간\s?전(?![가-힣])|공개\s?전(?![가-힣])|confidential",
     re.IGNORECASE,
 )
 
@@ -271,17 +275,13 @@ def _add_finding(
 def scan_text(text: str | None) -> dict:
     """텍스트에서 민감정보/금융 금지문구를 탐지하고 마스킹 결과를 반환한다.
 
-    반환 형식은 공통 7키 스키마를 유지한다.
-    특히 outputs는 P4 합의에 맞춰 다음 형태로 넣는다.
-
-    {
-        "masked_text": str,
-        "detected_types": list[str],
-        "log_safe_summary": str
-    }
+    반환 형식은 공통 7키 스키마를 유지한다. schema.ok()의 계약대로
+    outputs는 사람이 읽을 요약 문자열의 list[str]이며, masked_text·
+    detected_types·log_safe_summary 같은 구조화 payload는 data에만 담는다.
     """
     if text is None or text == "":
-        result = ok(
+        empty_summary = "scan_sensitive_info: 빈 입력"
+        return ok(
             TOOL_NAME,
             "입력이 비어 있어 탐지할 내용이 없습니다.",
             data={
@@ -289,16 +289,11 @@ def scan_text(text: str | None) -> dict:
                 "counts": {},
                 "masked_text": "",
                 "detected_types": [],
-                "log_safe_summary": "scan_sensitive_info: 빈 입력",
+                "log_safe_summary": empty_summary,
             },
+            outputs=[empty_summary],
             requires_human_review=False,
         )
-        result["outputs"] = {
-            "masked_text": "",
-            "detected_types": [],
-            "log_safe_summary": "scan_sensitive_info: 빈 입력",
-        }
-        return result
 
     findings: list[dict] = []
     replacements: list[_Replacement] = []
@@ -312,12 +307,15 @@ def scan_text(text: str | None) -> dict:
         if not _looks_like_birth_ymd(match.group(1)):
             continue
 
-        # 하이픈/공백 없는 연속 13자리 숫자는 주변 키워드가 없으면 오탐 가능성이 커서 제외
+        # 하이픈/공백 없는 연속 13자리 숫자는 주변에 주민번호 키워드가 없으면 오탐
+        # 가능성이 있으나, 실제 유출 텍스트에서는 키워드 없이 붙여 쓰는 경우도 흔해
+        # 완전히 놓치는 대신 confidence="low"로 남겨 사람이 확인할 수 있게 한다.
         separator = match.group(2)
+        confidence = "high"
         if separator == "":
             nearby = _context(text, match.start(), match.end(), _RRN_KEYWORD_WINDOW)
             if not _RRN_KEYWORD_RE.search(nearby):
-                continue
+                confidence = "low"
 
         _add_finding(
             findings=findings,
@@ -328,6 +326,7 @@ def scan_text(text: str | None) -> dict:
             masked_value=_mask_rrn(match),
             start=match.start(),
             end=match.end(),
+            confidence=confidence,
             reason="고유식별정보 패턴",
         )
 
@@ -473,7 +472,10 @@ def scan_text(text: str | None) -> dict:
                 "탐지된 개인정보 패턴은 마스킹되었습니다."
             )
 
-    result = ok(
+    # outputs는 schema.ok()의 계약(list[str])을 따르는 사람이 읽을 요약이며,
+    # masked_text/detected_types 같은 구조화 payload는 data에만 둔다 (중복 방지).
+    # log_ai_usage의 result_summary에는 masked_text 전체보다 log_safe_summary 사용을 권장한다.
+    return ok(
         TOOL_NAME,
         summary,
         data={
@@ -483,14 +485,6 @@ def scan_text(text: str | None) -> dict:
             "detected_types": detected_types,
             "log_safe_summary": log_safe_summary,
         },
+        outputs=[log_safe_summary],
         requires_human_review=requires_human_review,
     )
-
-    # P4 합의: outputs 내부 규격은 {"masked_text": str, "detected_types": list[str]}.
-    # log_ai_usage의 result_summary에는 masked_text 전체보다 log_safe_summary 사용을 권장한다.
-    result["outputs"] = {
-        "masked_text": masked_text,
-        "detected_types": detected_types,
-        "log_safe_summary": log_safe_summary,
-    }
-    return result
