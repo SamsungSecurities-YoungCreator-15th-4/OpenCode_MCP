@@ -32,6 +32,8 @@ def _stub_rag(monkeypatch):
         "chunk_id": "rules_10_0",
         "snippet": "준법감시인 사전확인이 필요하다.",
         "score": 0.1,
+        "vector_distance": 0.1,
+        "vector_similarity": 0.9,
     }
     monkeypatch.setattr(mcp_server.rag, "_ensure_ready", lambda: (True, None))
     monkeypatch.setattr(mcp_server.rag, "_search", lambda query, top_k=5: [sample_match])
@@ -39,7 +41,7 @@ def _stub_rag(monkeypatch):
         mcp_server.rag,
         "_generate_answer",
         lambda task, query, matches, risk_signals=None: (
-            "준법감시인 사전확인이 필요할 수 있으므로 근거를 확인하세요. [1]",
+            "검색된 근거를 확인했습니다. [1]",
             {"enabled": True, "model": "qwen3-instruct-16k", "error": None},
         ),
     )
@@ -85,6 +87,9 @@ def test_rag_tools_declare_real_local_search():
     ):
         assert result["data"]["mock"] is False
         assert "hallucination_guard" in result["data"]
+        assert result["data"]["threshold_passed"] is True
+        assert result["data"]["citation_verified"] is True
+        assert result["data"]["cited_articles"] == []
         assert result["data"]["answer"]
         assert result["data"]["answer_generation"]["model"] == "qwen3-instruct-16k"
 
@@ -113,4 +118,88 @@ def test_check_disclosure_risk_requires_review_for_risk_signal():
     result = mcp_server.check_disclosure_risk("실적 발표 전 대외 공유 자료입니다.")
 
     assert result["data"]["risk_signals"]
+    assert {item["criterion_no"] for item in result["data"]["matched_criteria"]} == {
+        "1호",
+        "6호",
+    }
+    assert result["requires_human_review"] is True
+
+
+def test_check_disclosure_risk_requires_review_for_clear_material_signal():
+    result = mcp_server.check_disclosure_risk("미공개 실적, 발표 전 유상증자 자료")
+
+    assert result["requires_human_review"] is True
+    assert result["data"]["threshold_passed"] is True
+    assert {item["criterion_no"] for item in result["data"]["matched_criteria"]} == {
+        "1호",
+        "5호",
+        "6호",
+    }
+
+
+def test_check_disclosure_risk_requires_review_for_ambiguous_signal():
+    result = mcp_server.check_disclosure_risk("발표 전 자료인지 애매한 실적 메모")
+
+    assert result["requires_human_review"] is True
+    assert result["data"]["risk_signals"]
+
+
+def test_check_disclosure_risk_cuts_off_weak_retrieval(monkeypatch):
+    weak_match = {
+        "source": "표준투자권유준칙",
+        "file_name": "rules.pdf",
+        "article": "제10조",
+        "article_title": "사전확인",
+        "chunk_id": "rules_10_0",
+        "snippet": "준법감시인 사전확인이 필요하다.",
+        "score": 0.1,
+        "vector_distance": 0.92,
+        "vector_similarity": 0.08,
+    }
+    monkeypatch.setattr(mcp_server.rag, "_search", lambda query, top_k=5: [weak_match])
+
+    result = mcp_server.check_disclosure_risk("오늘 점심 메뉴 추천")
+
+    assert result["requires_human_review"] is True
+    assert result["summary"].startswith("관련 규정을 찾지 못했습니다.")
+    assert result["data"]["threshold_passed"] is False
+    assert result["data"]["matches"] == []
+    assert result["data"]["citation_verified"] is True
+    assert result["data"]["cited_articles"] == []
+    assert result["outputs"] == []
+
+
+def test_check_disclosure_risk_discards_unsupported_article_citation(monkeypatch):
+    monkeypatch.setattr(
+        mcp_server.rag,
+        "_generate_answer",
+        lambda task, query, matches, risk_signals=None: (
+            "제999조에 따라 준법감시인 확인이 필요합니다.",
+            {"enabled": True, "model": "qwen3-instruct-16k", "error": None},
+        ),
+    )
+
+    result = mcp_server.check_disclosure_risk("점검용 텍스트")
+
+    assert result["requires_human_review"] is True
+    assert result["summary"] != "제999조에 따라 준법감시인 확인이 필요합니다."
+    assert result["data"]["answer"] is None
+    assert result["data"]["citation_verified"] is False
+    assert result["data"]["cited_articles"] == ["제999조"]
+    assert result["data"]["answer_generation"]["discarded"] is True
+
+
+def test_check_disclosure_risk_uses_answer_review_signal_without_regex(monkeypatch):
+    monkeypatch.setattr(
+        mcp_server.rag,
+        "_generate_answer",
+        lambda task, query, matches, risk_signals=None: (
+            "검색 근거상 준법감시인 확인이 필요합니다. [1]",
+            {"enabled": True, "model": "qwen3-instruct-16k", "error": None},
+        ),
+    )
+
+    result = mcp_server.check_disclosure_risk("점검용 텍스트")
+
+    assert result["data"]["risk_signals"] == []
     assert result["requires_human_review"] is True
