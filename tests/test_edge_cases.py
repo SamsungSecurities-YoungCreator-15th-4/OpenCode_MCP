@@ -536,12 +536,22 @@ def test_scan_then_log_never_persists_original_values(_tmp_audit_db):
     text = "고객 홍길동 010-1234-5678, 주민 900101-1234567, hong@corp.co.kr"
     scan = mcp_server.scan_sensitive_info(text)
 
-    mcp_server.log_ai_usage(
+    log_result = mcp_server.log_ai_usage(
         tool_name="scan_sensitive_info",
         input_text=text,
         result_summary=scan["data"]["log_safe_summary"],
         requires_human_review=scan["requires_human_review"],
     )
+
+    assert log_result["ok"] is True
+    assert log_result["data"]["logged_requires_human_review"] is True
+
+    conn = sqlite3.connect(_tmp_audit_db)
+    rows = conn.execute(
+        "SELECT tool_name, requires_human_review FROM audit_log ORDER BY id"
+    ).fetchall()
+    conn.close()
+    assert rows == [("scan_sensitive_info", 1)]
 
     with open(_tmp_audit_db, "rb") as fh:
         raw = fh.read()
