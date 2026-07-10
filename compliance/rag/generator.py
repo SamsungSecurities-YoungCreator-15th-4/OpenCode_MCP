@@ -23,7 +23,9 @@ _MAX_SNIPPET_CHARS = int(os.environ.get("RAG_CHAT_MAX_SNIPPET_CHARS", "700"))
 
 def _clean_answer(text: str) -> str:
     """qwen 계열이 thinking 태그를 내보내도 tool 응답에는 제거한다."""
-    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(
+        r"<think>.*?(?:</think>|$)", "", text, flags=re.DOTALL | re.IGNORECASE
+    )
     return re.sub(r"\s+", " ", text).strip()
 
 
