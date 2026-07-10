@@ -60,6 +60,21 @@ def test_extract_pdf(tmp_path):
     assert r.pages == 1
 
 
+def test_pdf_page_extraction_error_is_wrapped(monkeypatch):
+    class BrokenPage:
+        def extract_text(self):
+            raise RuntimeError("broken page stream")
+
+    class BrokenReader:
+        is_encrypted = False
+        pages = [BrokenPage()]
+
+    monkeypatch.setattr(fileio, "PdfReader", lambda _: BrokenReader())
+
+    with pytest.raises(FileInputError, match="PDF를 열 수 없습니다"):
+        fileio._read_pdf("broken.pdf")
+
+
 def test_unsupported_extension(tmp_path):
     p = tmp_path / "run.exe"
     p.write_bytes(b"MZ")
@@ -98,4 +113,30 @@ def test_oversize_file_rejected(tmp_path, monkeypatch):
     p = tmp_path / "big.txt"
     p.write_text("이 파일은 상한보다 큽니다", encoding="utf-8")
     with pytest.raises(FileInputError, match="너무 큽니다"):
+        extract_text(str(p))
+
+
+def test_file_size_error_is_wrapped(tmp_path, monkeypatch):
+    p = tmp_path / "unreadable.txt"
+    p.write_text("본문", encoding="utf-8")
+
+    def fail_getsize(_):
+        raise PermissionError("permission denied")
+
+    monkeypatch.setattr(fileio.os.path, "getsize", fail_getsize)
+
+    with pytest.raises(FileInputError, match="파일을 읽는 중 오류"):
+        extract_text(str(p))
+
+
+def test_text_decode_error_is_wrapped(tmp_path, monkeypatch):
+    p = tmp_path / "invalid.txt"
+    p.write_bytes(b"invalid")
+
+    def fail_decode(_):
+        raise UnicodeDecodeError("cp949", b"\xff", 0, 1, "invalid byte")
+
+    monkeypatch.setattr(fileio, "_read_txt", fail_decode)
+
+    with pytest.raises(FileInputError, match="파일을 읽는 중 오류"):
         extract_text(str(p))

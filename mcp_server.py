@@ -42,7 +42,7 @@ def _load_input(tool_name: str, text: str, file_path: str):
         )
     if not has_file:
         # 빈 text 허용은 기존 계약(폴백 쿼리 등 tool별 처리)을 그대로 따른다.
-        return text, None, None
+        return text or "", None, None
     try:
         extracted = fileio.extract_text(file_path)
     except fileio.FileInputError as exc:

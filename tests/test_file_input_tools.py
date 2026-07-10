@@ -1,5 +1,6 @@
 """scan/check tool의 file_path 입력 통합 테스트 (Ollama/Chroma 불필요)."""
 
+import hashlib
 import os
 import sqlite3
 
@@ -70,6 +71,12 @@ def test_scan_neither_arg_keeps_legacy_empty_text_path():
     assert "source_file" not in (r["data"] or {})
 
 
+def test_scan_none_text_uses_legacy_empty_text_path():
+    r = mcp_server.scan_sensitive_info(text=None)
+    assert r["ok"] is True
+    assert r["tool"] == "scan_sensitive_info"
+
+
 def test_scan_missing_file_fails_closed():
     r = mcp_server.scan_sensitive_info(file_path="/없는/경로/file.txt")
     assert r["ok"] is False
@@ -126,3 +133,17 @@ def test_check_rejects_both_args(tmp_path):
     r = mcp_server.check_disclosure_risk(text="본문", file_path=path)
     assert r["ok"] is False
     assert "정확히 하나" in r["summary"]
+
+
+def test_check_none_text_is_logged_as_empty_string():
+    r = mcp_server.check_disclosure_risk(text=None)
+    assert r["ok"] is True
+
+    conn = sqlite3.connect(os.environ["AUDIT_DB_PATH"])
+    try:
+        row = conn.execute(
+            "SELECT input_hash FROM audit_log ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row == (hashlib.sha256(b"").hexdigest(),)
