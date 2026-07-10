@@ -158,6 +158,8 @@ def test_check_disclosure_risk_auto_records_audit_log():
     result = mcp_server.check_disclosure_risk("실적 발표 전 대외 공유 자료입니다.")
 
     assert _audit_count() == 1
+    assert result["summary"].endswith(AUDIT_CONFIRMATION)
+    assert result["summary"].count(AUDIT_CONFIRMATION) == 1
     assert result["data"]["audit_log"]["id"] == 1
     assert result["data"]["audit_log"]["auto_logged"] is True
     assert result["data"]["audit_log"]["logged_requires_human_review"] is True
@@ -182,6 +184,18 @@ def test_log_ai_usage_skips_duplicate_check_disclosure_risk_record():
     )
     assert "id" not in duplicate["data"]
     assert "record_hash" not in duplicate["data"]
+
+
+def test_log_ai_usage_summary_is_audit_confirmation_for_logged_events():
+    result = mcp_server.log_ai_usage(
+        "scan_sensitive_info",
+        "담당자 연락처는 010-1234-5678 입니다.",
+        "scan_sensitive_info: PHONE 010-****-5678; 사람 검토 필요",
+        True,
+    )
+
+    assert _audit_count() == 1
+    assert result["summary"] == AUDIT_CONFIRMATION
 
 
 def test_check_disclosure_risk_handles_none_data_before_audit_metadata(monkeypatch):

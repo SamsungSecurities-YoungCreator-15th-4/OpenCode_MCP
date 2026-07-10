@@ -19,6 +19,13 @@ AUDIT_CONFIRMATION = (
 )
 
 
+def _with_audit_confirmation(summary: str) -> str:
+    """Append the audit confirmation once when a tool saved an audit log."""
+    if AUDIT_CONFIRMATION in summary:
+        return summary
+    return f"{summary}\n\n{AUDIT_CONFIRMATION}"
+
+
 @mcp.tool()
 def scan_sensitive_info(text: str) -> dict:
     """Scan text for sensitive information and financial prohibited claims before
@@ -62,6 +69,7 @@ def check_disclosure_risk(text: str) -> dict:
     except Exception as exc:
         return fail("check_disclosure_risk", "감사 로그 기록에 실패했습니다.", str(exc))
 
+    result["summary"] = _with_audit_confirmation(result["summary"])
     result["data"] = dict(result.get("data") or {})
     result["data"]["audit_log"] = {
         "id": record["id"],
