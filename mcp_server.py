@@ -53,7 +53,7 @@ def check_disclosure_risk(text: str) -> dict:
     except Exception as exc:
         return fail("check_disclosure_risk", "감사 로그 기록에 실패했습니다.", str(exc))
 
-    result["data"] = dict(result.get("data", {}))
+    result["data"] = dict(result.get("data") or {})
     result["data"]["audit_log"] = {
         "id": record["id"],
         "timestamp": record["timestamp"],

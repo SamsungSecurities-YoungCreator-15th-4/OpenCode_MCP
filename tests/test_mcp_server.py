@@ -148,6 +148,25 @@ def test_check_disclosure_risk_auto_records_audit_log():
     assert len(result["data"]["audit_log"]["record_hash"]) == 64
 
 
+def test_check_disclosure_risk_handles_none_data_before_audit_metadata(monkeypatch):
+    monkeypatch.setattr(
+        mcp_server.rag,
+        "check_disclosure_risk",
+        lambda text: schema.ok(
+            "check_disclosure_risk",
+            "점검 결과입니다.",
+            data=None,
+            requires_human_review=True,
+        ),
+    )
+
+    result = mcp_server.check_disclosure_risk("실적 발표 전 대외 공유 자료입니다.")
+
+    assert result["ok"] is True
+    assert result["data"]["audit_log"]["auto_logged"] is True
+    assert _audit_count() == 1
+
+
 def test_scan_and_search_do_not_auto_record_audit_log():
     mcp_server.scan_sensitive_info("담당자 연락처는 010-1234-5678 입니다.")
     mcp_server.search_compliance_rule("준법감시인 사전확인")
