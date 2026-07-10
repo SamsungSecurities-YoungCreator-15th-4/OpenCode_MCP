@@ -15,6 +15,7 @@ EXPECTED_TOOLS = {
     "search_compliance_rule",
     "log_ai_usage",
 }
+AUDIT_CONFIRMATION = mcp_server.AUDIT_CONFIRMATION
 
 
 def _audit_count() -> int:
@@ -63,6 +64,18 @@ def _stub_rag(monkeypatch):
 def test_exactly_four_tools_registered():
     tools = asyncio.run(mcp_server.mcp.list_tools())
     assert {t.name for t in tools} == EXPECTED_TOOLS
+
+
+def test_audit_confirmation_is_declared_for_all_log_saving_paths():
+    tools = {tool.name: tool for tool in asyncio.run(mcp_server.mcp.list_tools())}
+
+    check_description = tools["check_disclosure_risk"].description
+    log_description = tools["log_ai_usage"].description
+
+    assert "data.audit_log.auto_logged=true" in check_description
+    assert AUDIT_CONFIRMATION in check_description
+    assert "duplicate check_disclosure_risk log requests are ignored" in log_description
+    assert "append this summary verbatim at the end" in log_description
 
 
 def test_scan_sensitive_info_uses_real_detector():
@@ -142,10 +155,44 @@ def test_check_disclosure_risk_auto_records_audit_log():
     result = mcp_server.check_disclosure_risk("실적 발표 전 대외 공유 자료입니다.")
 
     assert _audit_count() == 1
+    assert result["summary"].endswith(AUDIT_CONFIRMATION)
+    assert result["summary"].count(AUDIT_CONFIRMATION) == 1
     assert result["data"]["audit_log"]["id"] == 1
     assert result["data"]["audit_log"]["auto_logged"] is True
     assert result["data"]["audit_log"]["logged_requires_human_review"] is True
     assert len(result["data"]["audit_log"]["record_hash"]) == 64
+
+
+def test_log_ai_usage_skips_duplicate_check_disclosure_risk_record():
+    check = mcp_server.check_disclosure_risk("실적 발표 전 대외 공유 자료입니다.")
+    duplicate = mcp_server.log_ai_usage(
+        "  CHECK_DISCLOSURE_RISK  ",
+        "실적 발표 전 대외 공유 자료입니다.",
+        check["summary"],
+        check["requires_human_review"],
+    )
+
+    assert _audit_count() == 1
+    assert duplicate["ok"] is True
+    assert duplicate["summary"] == AUDIT_CONFIRMATION
+    assert duplicate["data"]["skipped"] is True
+    assert duplicate["data"]["skip_reason"] == (
+        "check_disclosure_risk_auto_logs_audit_record"
+    )
+    assert "id" not in duplicate["data"]
+    assert "record_hash" not in duplicate["data"]
+
+
+def test_log_ai_usage_summary_is_audit_confirmation_for_logged_events():
+    result = mcp_server.log_ai_usage(
+        "scan_sensitive_info",
+        "담당자 연락처는 010-1234-5678 입니다.",
+        "scan_sensitive_info: PHONE 010-****-5678; 사람 검토 필요",
+        True,
+    )
+
+    assert _audit_count() == 1
+    assert result["summary"] == AUDIT_CONFIRMATION
 
 
 def test_check_disclosure_risk_handles_none_data_before_audit_metadata(monkeypatch):
