@@ -35,14 +35,41 @@ def scan_sensitive_info(text: str) -> dict:
 def check_disclosure_risk(text: str) -> dict:
     """Check whether text may contain undisclosed material information
     that requires compliance officer confirmation before external
-    disclosure. Advisory only — it never gives a final legal judgment."""
-    return rag.check_disclosure_risk(text)
+    disclosure. Advisory only — it never gives a final legal judgment.
+
+    This tool automatically writes a tamper-evident audit record in the
+    same process after the disclosure-risk check is completed, so material
+    disclosure decisions do not depend on the LLM separately calling
+    log_ai_usage.
+    """
+    result = rag.check_disclosure_risk(text)
+    try:
+        record = audit.append(
+            tool_name="check_disclosure_risk",
+            input_text=text,
+            result_summary=result["summary"],
+            requires_human_review=result["requires_human_review"],
+        )
+    except Exception as exc:
+        return fail("check_disclosure_risk", "감사 로그 기록에 실패했습니다.", str(exc))
+
+    result["data"] = dict(result.get("data", {}))
+    result["data"]["audit_log"] = {
+        "id": record["id"],
+        "timestamp": record["timestamp"],
+        "record_hash": record["record_hash"],
+        "logged_requires_human_review": bool(record["requires_human_review"]),
+        "auto_logged": True,
+    }
+    return result
 
 
 @mcp.tool()
 def search_compliance_rule(query: str) -> dict:
     """Search internal compliance rules and return relevant rule excerpts
-    as evidence for a compliance question."""
+    as evidence for a compliance question. This search-only tool does not
+    automatically write an audit log; call log_ai_usage separately when the
+    search event itself must be retained as evidence."""
     return rag.search_compliance_rule(query)
 
 
@@ -55,8 +82,10 @@ def log_ai_usage(
 ) -> dict:
     """Record an AI-usage / compliance-check event to the local tamper-evident
     audit log so there is a compliance audit trail of what was checked with AI.
-    Call this after a sensitive-info scan or disclosure-risk check to log the
-    event. The input text is stored only as a SHA-256 hash, never in plaintext;
+    Call this after a sensitive-info scan or search-only request when that
+    event must be retained. check_disclosure_risk already records its own audit
+    event automatically, so do not duplicate it unless explicitly requested.
+    The input text is stored only as a SHA-256 hash, never in plaintext;
     result_summary must already be free of sensitive values. Returns the stored
     record id and hash."""
     try:
