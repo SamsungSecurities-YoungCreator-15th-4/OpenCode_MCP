@@ -15,10 +15,7 @@ EXPECTED_TOOLS = {
     "search_compliance_rule",
     "log_ai_usage",
 }
-AUDIT_CONFIRMATION = (
-    "🔒 확인한 내용이 안전하게 기록되었습니다. 개인정보와 미공개 정보 등 "
-    "민감한 내용은 노출되지 않도록 보호한 뒤 저장됩니다."
-)
+AUDIT_CONFIRMATION = mcp_server.AUDIT_CONFIRMATION
 
 
 def _audit_count() -> int:
@@ -169,7 +166,7 @@ def test_check_disclosure_risk_auto_records_audit_log():
 def test_log_ai_usage_skips_duplicate_check_disclosure_risk_record():
     check = mcp_server.check_disclosure_risk("실적 발표 전 대외 공유 자료입니다.")
     duplicate = mcp_server.log_ai_usage(
-        "check_disclosure_risk",
+        "  CHECK_DISCLOSURE_RISK  ",
         "실적 발표 전 대외 공유 자료입니다.",
         check["summary"],
         check["requires_human_review"],

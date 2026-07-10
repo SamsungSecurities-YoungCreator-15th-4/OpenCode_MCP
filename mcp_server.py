@@ -116,7 +116,8 @@ def log_ai_usage(
     redundant and must not happen. Even if re-masking occurred while storing
     the log, the server already forces requires_human_review to True in that
     case — just pass through your best-effort value."""
-    if tool_name == "check_disclosure_risk":
+    normalized_tool_name = tool_name.strip().lower() if isinstance(tool_name, str) else ""
+    if normalized_tool_name == "check_disclosure_risk":
         return ok(
             "log_ai_usage",
             AUDIT_CONFIRMATION,
