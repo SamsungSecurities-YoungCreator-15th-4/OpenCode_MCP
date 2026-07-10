@@ -11,8 +11,10 @@ import re
 
 import httpx
 
-# embedder.py와 동일 사유: localhost→::1 선해석 폴백 왕복을 피해 IPv4로 고정.
-OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+# embedder.py와 동일 사유: localhost→::1 선해석 폴백 왕복을 피해 IPv4로 고정하고,
+# systemd 드롭인의 스키마 없는 "127.0.0.1:11434" 형식도 보정한다.
+_raw_host = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+OLLAMA_HOST = _raw_host if _raw_host.startswith(("http://", "https://")) else f"http://{_raw_host}"
 CHAT_MODEL = os.environ.get("RAG_CHAT_MODEL", "qwen3-instruct-16k")
 _TIMEOUT = float(os.environ.get("RAG_CHAT_TIMEOUT", "120"))
 _MAX_EVIDENCE = int(os.environ.get("RAG_CHAT_MAX_EVIDENCE", "5"))
