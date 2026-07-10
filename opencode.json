@@ -1,6 +1,8 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "model": "ollama/qwen3-instruct-16k",
+  "enabled_providers": ["ollama"],
+  "autoupdate": false,
   "mcp": {
     "compliance-assistant": {
       "type": "local",
