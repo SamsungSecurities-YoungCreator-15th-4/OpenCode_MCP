@@ -9,7 +9,9 @@ import os
 
 import httpx
 
-OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+# localhost는 ::1(IPv6)로 먼저 해석되는데 Ollama는 127.0.0.1(IPv4)에만 바인딩되어
+# 매 호출마다 연결 거절→폴백 왕복이 생긴다. IPv4 리터럴로 고정한다.
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
 EMBED_MODEL = os.environ.get("BGE_M3_MODEL", "bge-m3")
 _TIMEOUT = float(os.environ.get("OLLAMA_TIMEOUT", "120"))
 # 대량 코퍼스를 단일 요청으로 보내면 타임아웃·OOM 위험이 있어 배치로 나눠 호출한다.
