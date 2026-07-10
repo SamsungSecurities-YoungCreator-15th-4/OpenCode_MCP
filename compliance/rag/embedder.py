@@ -20,12 +20,17 @@ _TIMEOUT = float(os.environ.get("OLLAMA_TIMEOUT", "120"))
 _BATCH_SIZE = int(os.environ.get("EMBED_BATCH_SIZE", "32"))
 
 
-def _embed_batch(batch: list[str]) -> list[list[float]]:
+def _embed_batch(
+    batch: list[str], client: httpx.Client | None = None
+) -> list[list[float]]:
     url = f"{OLLAMA_HOST}/api/embed"
     try:
-        resp = httpx.post(
-            url, json={"model": EMBED_MODEL, "input": batch}, timeout=_TIMEOUT
-        )
+        if client is None:
+            resp = httpx.post(
+                url, json={"model": EMBED_MODEL, "input": batch}, timeout=_TIMEOUT
+            )
+        else:
+            resp = client.post(url, json={"model": EMBED_MODEL, "input": batch})
         resp.raise_for_status()
     except httpx.HTTPError as exc:
         raise RuntimeError(
@@ -53,6 +58,9 @@ def embed_texts(texts: list[str], batch_size: int = _BATCH_SIZE) -> list[list[fl
         return []
 
     embeddings: list[list[float]] = []
-    for start in range(0, len(texts), batch_size):
-        embeddings.extend(_embed_batch(texts[start : start + batch_size]))
+    with httpx.Client(timeout=_TIMEOUT) as client:
+        for start in range(0, len(texts), batch_size):
+            embeddings.extend(
+                _embed_batch(texts[start : start + batch_size], client=client)
+            )
     return embeddings

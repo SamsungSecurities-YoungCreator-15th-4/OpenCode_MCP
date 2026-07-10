@@ -7,9 +7,10 @@
 
 import pytest
 
-from compliance.rag import chunker
+from compliance.rag import chunker, corpus, embedder
 from compliance.rag.corpus import corpus_fingerprint, load_corpus_chunks
 from compliance.rag.embedder import embed_texts
+from compliance.rag.generator import _clean_answer
 from compliance.rag.hybrid_search import reciprocal_rank_fusion
 
 # 미공개중요정보 8기준과 무관한 짧은 가짜 조항들(category는 항상 None로 남는다).
@@ -23,6 +24,68 @@ DUMMY_CORPUS = """
 
 제77조(교육) 회사는 임직원에게 정기적으로 준법 관련 교육을 실시하여야 한다.
 """.strip()
+
+
+def test_embed_texts_reuses_one_http_client_across_batches(monkeypatch):
+    clients = []
+
+    class FakeResponse:
+        text = ""
+
+        def __init__(self, batch):
+            self._batch = batch
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"embeddings": [[float(i)] for i, _ in enumerate(self._batch)]}
+
+    class FakeClient:
+        def __init__(self, *, timeout):
+            self.timeout = timeout
+            self.calls = []
+            clients.append(self)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def post(self, url, *, json):
+            self.calls.append((url, json))
+            return FakeResponse(json["input"])
+
+    monkeypatch.setattr(embedder.httpx, "Client", FakeClient)
+
+    result = embedder.embed_texts(["a", "b", "c"], batch_size=2)
+
+    assert len(clients) == 1
+    assert len(clients[0].calls) == 2
+    assert len(result) == 3
+
+
+def test_clean_answer_removes_closed_thinking_block():
+    assert _clean_answer("<think>내부 추론</think> 최종 답변") == "최종 답변"
+
+
+def test_clean_answer_discards_unclosed_thinking_tail():
+    assert _clean_answer("안전한 앞부분 <THINK>노출되면 안 되는 내부 추론") == "안전한 앞부분"
+
+
+def test_corpus_loading_fails_closed_when_a_source_is_unreadable(
+    tmp_path, monkeypatch
+):
+    (tmp_path / "broken.txt").write_text("규정 원문", encoding="utf-8")
+
+    def fail_read(_):
+        raise RuntimeError("corrupted source")
+
+    monkeypatch.setattr(corpus, "load_document_text", fail_read)
+
+    with pytest.raises(RuntimeError, match="corrupted source"):
+        corpus.load_corpus_chunks(tmp_path)
 
 # 항(①②③)을 가진 긴 조항 — max_chars 초과 분할 테스트용.
 LONG_ARTICLE = (
