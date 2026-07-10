@@ -394,3 +394,42 @@ def test_negative_findings_limit_falls_back_to_default(monkeypatch):
     assert result["data"]["max_findings"] == 100
     assert result["data"]["returned_findings"] == 1
     assert result["data"]["truncated"] is False
+
+
+def test_card_without_luhn_but_with_card_keyword_detected_low_confidence():
+    # 7/11 종합 샘플 미탐 재현: 체크섬 불일치 카드번호도 카드 키워드 문맥에서는
+    # 버리지 않고 낮은 confidence로 탐지·마스킹한다(미탐 > 오탐 원칙).
+    result = detector.scan_text("결제 카드번호: 4571-1234-1234-1234")
+    findings = result["data"]["findings"]
+
+    assert len(findings) == 1
+    assert findings[0]["type"] == "card"
+    assert findings[0]["confidence"] == "low"
+    assert findings[0]["value_masked"] == "4571-****-****-1234"
+    assert "4571-1234-1234-1234" not in _dump(result)
+    assert result["requires_human_review"] is True
+
+
+def test_card_without_luhn_and_without_keyword_still_ignored():
+    # 기존 계약 유지: 키워드 없는 일련번호류는 오탐 방지를 위해 계속 무시한다.
+    result = detector.scan_text("일련번호 1234-5678-9012-3456 확인")
+    assert result["data"]["findings"] == []
+
+
+def test_no_loss_claim_inflected_and_modifier_forms_detected():
+    # 7/11 종합 샘플 미탐 재현: 명사형 "없음"이 아닌 활용형·수식어 문장.
+    result = detector.scan_text(
+        "원금 손실 가능성이 전혀 없는 안전한 구조로 설계되어 리스크가 없습니다."
+    )
+    reasons = [f["reason"] for f in result["data"]["findings"]]
+
+    assert any("no_loss" in r for r in reasons)
+    assert any("risk_free" in r for r in reasons)
+    assert "손실 가능성이 전혀 없" not in result["data"]["masked_text"]
+    assert "리스크가 없" not in result["data"]["masked_text"]
+
+
+def test_loss_with_explicit_percentage_still_not_flagged():
+    # 확장된 no_loss 패턴이 수치 명시 문장을 오탐하지 않는지 재확인.
+    result = detector.scan_text("예상 손실 0.5% 수준이며 리스크 관리 계획을 첨부합니다.")
+    assert result["data"]["findings"] == []
