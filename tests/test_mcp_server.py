@@ -1,6 +1,8 @@
 """MCP 툴 함수 단위 테스트 (FastMCP @tool 데코레이터는 원본 함수를 그대로 반환한다)."""
 
 import asyncio
+import os
+import sqlite3
 
 import pytest
 
@@ -13,6 +15,17 @@ EXPECTED_TOOLS = {
     "search_compliance_rule",
     "log_ai_usage",
 }
+
+
+def _audit_count() -> int:
+    db_path = os.environ["AUDIT_DB_PATH"]
+    if not os.path.exists(db_path):
+        return 0
+    conn = sqlite3.connect(db_path)
+    try:
+        return conn.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0]
+    finally:
+        conn.close()
 
 
 @pytest.fixture(autouse=True)
@@ -123,6 +136,42 @@ def test_check_disclosure_risk_requires_review_for_risk_signal():
         "6호",
     }
     assert result["requires_human_review"] is True
+
+
+def test_check_disclosure_risk_auto_records_audit_log():
+    result = mcp_server.check_disclosure_risk("실적 발표 전 대외 공유 자료입니다.")
+
+    assert _audit_count() == 1
+    assert result["data"]["audit_log"]["id"] == 1
+    assert result["data"]["audit_log"]["auto_logged"] is True
+    assert result["data"]["audit_log"]["logged_requires_human_review"] is True
+    assert len(result["data"]["audit_log"]["record_hash"]) == 64
+
+
+def test_check_disclosure_risk_handles_none_data_before_audit_metadata(monkeypatch):
+    monkeypatch.setattr(
+        mcp_server.rag,
+        "check_disclosure_risk",
+        lambda text: schema.ok(
+            "check_disclosure_risk",
+            "점검 결과입니다.",
+            data=None,
+            requires_human_review=True,
+        ),
+    )
+
+    result = mcp_server.check_disclosure_risk("실적 발표 전 대외 공유 자료입니다.")
+
+    assert result["ok"] is True
+    assert result["data"]["audit_log"]["auto_logged"] is True
+    assert _audit_count() == 1
+
+
+def test_scan_and_search_do_not_auto_record_audit_log():
+    mcp_server.scan_sensitive_info("담당자 연락처는 010-1234-5678 입니다.")
+    mcp_server.search_compliance_rule("준법감시인 사전확인")
+
+    assert _audit_count() == 0
 
 
 def test_check_disclosure_risk_requires_review_for_clear_material_signal():
