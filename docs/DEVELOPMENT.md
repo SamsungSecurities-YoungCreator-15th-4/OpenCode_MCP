@@ -61,6 +61,9 @@ ok(bool) / tool(str) / summary(str) / data(dict) / outputs(list[str]) / requires
 - 코드 리뷰 봇: Gemini만 사용(Copilot·Code Quality 사용 금지).
 - 기존 테스트를 깨지 않는다. Ollama 의존 테스트는 skip 마커를 유지한다.
 
-## CLAUDE.md
-CLAUDE.md는 이 한 줄만 둔다 (단독 행 import 구문):
-@AGENTS.md
+## 에이전트 컨텍스트 파일 규칙
+- AGENTS.md: OpenCode 런타임이 매 세션 자동 로드(비활성화 불가) → 어시스턴트 동작 규칙만 짧게 유지. 개발 규칙을 다시 넣지 않는다.
+- docs/DEVELOPMENT.md(이 파일): 개발 컨텍스트 원본. Codex는 AGENTS.md 끝의 포인터를 따라 읽는다.
+- CLAUDE.md는 이 두 줄만 둔다 (단독 행 import 구문):
+  @AGENTS.md
+  @docs/DEVELOPMENT.md
