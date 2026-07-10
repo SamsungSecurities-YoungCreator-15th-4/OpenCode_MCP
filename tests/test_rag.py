@@ -74,6 +74,11 @@ def test_clean_answer_discards_unclosed_thinking_tail():
     assert _clean_answer("안전한 앞부분 <THINK>노출되면 안 되는 내부 추론") == "안전한 앞부분"
 
 
+def test_clean_answer_removes_multiple_thinking_blocks():
+    text = "<think>첫 추론</think> 첫 답변 <THINK>둘째 추론</THINK> 둘째 답변"
+    assert _clean_answer(text) == "첫 답변 둘째 답변"
+
+
 def test_corpus_loading_fails_closed_when_a_source_is_unreadable(
     tmp_path, monkeypatch
 ):

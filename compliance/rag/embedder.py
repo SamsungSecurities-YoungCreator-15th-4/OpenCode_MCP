@@ -24,13 +24,12 @@ def _embed_batch(
     batch: list[str], client: httpx.Client | None = None
 ) -> list[list[float]]:
     url = f"{OLLAMA_HOST}/api/embed"
+    payload = {"model": EMBED_MODEL, "input": batch}
     try:
         if client is None:
-            resp = httpx.post(
-                url, json={"model": EMBED_MODEL, "input": batch}, timeout=_TIMEOUT
-            )
+            resp = httpx.post(url, json=payload, timeout=_TIMEOUT)
         else:
-            resp = client.post(url, json={"model": EMBED_MODEL, "input": batch})
+            resp = client.post(url, json=payload)
         resp.raise_for_status()
     except httpx.HTTPError as exc:
         raise RuntimeError(
