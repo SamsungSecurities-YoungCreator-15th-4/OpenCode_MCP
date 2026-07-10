@@ -182,11 +182,11 @@ def test_result_summary_without_sensitive_info_is_unchanged(tmp_path):
 
 def test_none_result_summary_is_rejected(tmp_path):
     db = _db(tmp_path)
+    logger.init_db(db)
     with pytest.raises(ValueError):
         logger.append("scan_sensitive_info", "원문", None, False, db_path=db)
 
     # 레코드가 저장되지 않았어야 한다.
     conn = sqlite3.connect(db)
-    conn.execute(logger._CREATE_TABLE)
     assert conn.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0] == 0
     conn.close()
