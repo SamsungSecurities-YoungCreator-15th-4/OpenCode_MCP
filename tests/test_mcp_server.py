@@ -77,6 +77,7 @@ def test_audit_confirmation_is_declared_for_all_log_saving_paths():
 
     assert "data.audit_log.auto_logged=true" in check_description
     assert AUDIT_CONFIRMATION in check_description
+    assert "duplicate check_disclosure_risk log requests are ignored" in log_description
     assert "append this summary verbatim at the end" in log_description
 
 
@@ -161,6 +162,26 @@ def test_check_disclosure_risk_auto_records_audit_log():
     assert result["data"]["audit_log"]["auto_logged"] is True
     assert result["data"]["audit_log"]["logged_requires_human_review"] is True
     assert len(result["data"]["audit_log"]["record_hash"]) == 64
+
+
+def test_log_ai_usage_skips_duplicate_check_disclosure_risk_record():
+    check = mcp_server.check_disclosure_risk("실적 발표 전 대외 공유 자료입니다.")
+    duplicate = mcp_server.log_ai_usage(
+        "check_disclosure_risk",
+        "실적 발표 전 대외 공유 자료입니다.",
+        check["summary"],
+        check["requires_human_review"],
+    )
+
+    assert _audit_count() == 1
+    assert duplicate["ok"] is True
+    assert duplicate["summary"] == AUDIT_CONFIRMATION
+    assert duplicate["data"]["skipped"] is True
+    assert duplicate["data"]["skip_reason"] == (
+        "check_disclosure_risk_auto_logs_audit_record"
+    )
+    assert "id" not in duplicate["data"]
+    assert "record_hash" not in duplicate["data"]
 
 
 def test_check_disclosure_risk_handles_none_data_before_audit_metadata(monkeypatch):

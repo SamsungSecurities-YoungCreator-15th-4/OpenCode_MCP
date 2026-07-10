@@ -13,6 +13,10 @@ from compliance import audit, detector, rag
 from compliance.schema import fail, ok
 
 mcp = FastMCP("compliance-assistant")
+AUDIT_CONFIRMATION = (
+    "🔒 확인한 내용이 안전하게 기록되었습니다. 개인정보와 미공개 정보 등 "
+    "민감한 내용은 노출되지 않도록 보호한 뒤 저장됩니다."
+)
 
 
 @mcp.tool()
@@ -89,7 +93,8 @@ def log_ai_usage(
     audit log so there is a compliance audit trail of what was checked with AI.
     Call this after a sensitive-info scan or search-only request when that
     event must be retained. check_disclosure_risk already records its own audit
-    event automatically, so do not duplicate it unless explicitly requested.
+    event automatically, so do not call this tool for check_disclosure_risk;
+    duplicate check_disclosure_risk log requests are ignored by the server.
     The input text is stored only as a SHA-256 hash, never in plaintext;
     result_summary must already be free of sensitive values. The record id and
     hash are returned in the 'data' field of the response for internal/audit
@@ -103,6 +108,18 @@ def log_ai_usage(
     redundant and must not happen. Even if re-masking occurred while storing
     the log, the server already forces requires_human_review to True in that
     case — just pass through your best-effort value."""
+    if tool_name == "check_disclosure_risk":
+        return ok(
+            "log_ai_usage",
+            AUDIT_CONFIRMATION,
+            data={
+                "skipped": True,
+                "skip_reason": "check_disclosure_risk_auto_logs_audit_record",
+                "tool_name": tool_name,
+                "logged_requires_human_review": bool(requires_human_review),
+            },
+        )
+
     try:
         record = audit.append(
             tool_name=tool_name,
@@ -115,8 +132,7 @@ def log_ai_usage(
 
     return ok(
         "log_ai_usage",
-        "🔒 확인한 내용이 안전하게 기록되었습니다. 개인정보와 미공개 정보 등 "
-        "민감한 내용은 노출되지 않도록 보호한 뒤 저장됩니다.",
+        AUDIT_CONFIRMATION,
         data={
             "id": record["id"],
             "timestamp": record["timestamp"],
