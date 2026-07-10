@@ -9,6 +9,8 @@ import hashlib
 import sqlite3
 import threading
 
+import pytest
+
 from compliance.audit import logger
 
 
@@ -171,3 +173,20 @@ def test_result_summary_without_sensitive_info_is_unchanged(tmp_path):
     r = logger.append("scan_sensitive_info", "원문", clean_summary, False, db_path=db)
 
     assert r["result_summary"] == clean_summary
+
+
+# --- 8. result_summary=None은 조용히 통과되지 않고 명시적으로 거부된다 ---------
+# (재마스킹을 위해 scan_text(None)을 그대로 태우면 에러 없이 "" 로 통과되어,
+#  호출자가 요약 생성에 실패한 버그를 감사 로그가 조용히 숨기게 되는 것을 방지)
+
+
+def test_none_result_summary_is_rejected(tmp_path):
+    db = _db(tmp_path)
+    with pytest.raises(ValueError):
+        logger.append("scan_sensitive_info", "원문", None, False, db_path=db)
+
+    # 레코드가 저장되지 않았어야 한다.
+    conn = sqlite3.connect(db)
+    conn.execute(logger._CREATE_TABLE)
+    assert conn.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0] == 0
+    conn.close()

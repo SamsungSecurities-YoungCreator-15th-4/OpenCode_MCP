@@ -117,7 +117,13 @@ def append(
     빠뜨리거나 원문을 재노출해도 감사 로그에는 항상 안전한 텍스트만 남는다.
     이 재스캔에서 민감정보가 실제로 발견되면(=호출자가 유출을 시도했다는 뜻),
     호출자가 requires_human_review=False를 넘겼더라도 True로 강제 승격한다.
+
+    result_summary=None은 명시적으로 거부한다. scan_text(None)이 에러 없이
+    빈 문자열을 반환하기 때문에, 이 가드가 없으면 호출자가 요약 생성에
+    실패해 None을 넘긴 버그가 조용히 "정상"으로 감사 로그에 남는다.
     """
+    if result_summary is None:
+        raise ValueError("result_summary must not be None")
     input_hash = _sha256(input_text)
     # 이후로 input_text 원문은 사용하지 않는다(해시만 보관).
     scan_result = scan_text(result_summary)
