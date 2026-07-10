@@ -240,6 +240,19 @@ def test_check_disclosure_risk_requires_review_for_ambiguous_signal():
     assert result["data"]["risk_signals"]
 
 
+def test_check_disclosure_risk_detects_prohibited_investment_claim_signals():
+    result = mcp_server.check_disclosure_risk(
+        "이 상품은 원금 보전형이며 무손실 설계입니다. "
+        "확정 이자를 보장하는 무위험 고수익 상품입니다. "
+        "지금 가입하면 반드시 수익이 납니다."
+    )
+
+    assert result["requires_human_review"] is True
+    assert {
+        signal["type"] for signal in result["data"]["risk_signals"]
+    } >= {"투자권유/수익 표현"}
+
+
 def test_check_disclosure_risk_cuts_off_weak_retrieval(monkeypatch):
     weak_match = {
         "source": "표준투자권유준칙",
