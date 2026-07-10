@@ -253,6 +253,18 @@ def test_check_disclosure_risk_detects_prohibited_investment_claim_signals():
     } >= {"투자권유/수익 표현"}
 
 
+def test_check_disclosure_risk_prefers_specific_return_guarantee_signal():
+    result = mcp_server.check_disclosure_risk("이 상품은 수익률 보장 상품입니다.")
+    signal = next(
+        item
+        for item in result["data"]["risk_signals"]
+        if item["type"] == "투자권유/수익 표현"
+    )
+
+    assert "수익률 보장" in signal["matched_terms"]
+    assert "수익률" not in signal["matched_terms"]
+
+
 def test_check_disclosure_risk_cuts_off_weak_retrieval(monkeypatch):
     weak_match = {
         "source": "표준투자권유준칙",
