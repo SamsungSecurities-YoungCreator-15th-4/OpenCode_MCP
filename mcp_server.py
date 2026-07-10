@@ -58,12 +58,15 @@ def log_ai_usage(
     Call this after a sensitive-info scan or disclosure-risk check to log the
     event. The input text is stored only as a SHA-256 hash, never in plaintext;
     result_summary must already be free of sensitive values. The record id and
-    hash are returned in data for internal/audit lookup only — never read them
-    aloud to the user. The summary text is the final, complete confirmation
-    message for the user as-is: repeat it verbatim as your final reply and do
-    not add any other sentence about the log being saved, masked, or
-    protected — the summary already covers that; restating it in different
-    words is redundant and must not happen."""
+    hash are returned in the 'data' field of the response for internal/audit
+    lookup only — never read them aloud to the user. The 'summary' field in the
+    returned dictionary is the final, complete confirmation message for the
+    user as-is: repeat its value verbatim as your final reply and do not add
+    any other sentence about the log being saved, masked, or protected — the
+    summary already covers that; restating it in different words is redundant
+    and must not happen. Even if re-masking occurred while storing the log,
+    the server already forces requires_human_review to True in that case —
+    just pass through your best-effort value."""
     try:
         record = audit.append(
             tool_name=tool_name,
@@ -87,7 +90,6 @@ def log_ai_usage(
             "record_hash": record["record_hash"],
             "logged_requires_human_review": bool(record["requires_human_review"]),
         },
-        outputs=[],
     )
 
 
