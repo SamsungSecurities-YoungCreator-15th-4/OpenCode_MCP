@@ -40,7 +40,12 @@ def check_disclosure_risk(text: str) -> dict:
     This tool automatically writes a tamper-evident audit record in the
     same process after the disclosure-risk check is completed, so material
     disclosure decisions do not depend on the LLM separately calling
-    log_ai_usage.
+    log_ai_usage. When this tool returns data.audit_log.auto_logged=true,
+    an audit log was saved even though log_ai_usage was not called. In that
+    case, your final reply must include this exact audit confirmation sentence
+    at the end, after the disclosure-risk answer, and must not mention record
+    ids or hashes:
+    "🔒 확인한 내용이 안전하게 기록되었습니다. 개인정보와 미공개 정보 등 민감한 내용은 노출되지 않도록 보호한 뒤 저장됩니다."
     """
     result = rag.check_disclosure_risk(text)
     try:
@@ -90,12 +95,14 @@ def log_ai_usage(
     hash are returned in the 'data' field of the response for internal/audit
     lookup only — never read them aloud to the user. The 'summary' field in the
     returned dictionary is the final, complete confirmation message for the
-    user as-is: repeat its value verbatim as your final reply and do not add
-    any other sentence about the log being saved, masked, or protected — the
-    summary already covers that; restating it in different words is redundant
-    and must not happen. Even if re-masking occurred while storing the log,
-    the server already forces requires_human_review to True in that case —
-    just pass through your best-effort value."""
+    user as-is: if this tool is called after another tool, include the earlier
+    tool answer first and append this summary verbatim at the end; if this tool
+    is called alone, repeat this summary verbatim as your final reply. Do not
+    add any other sentence about the log being saved, masked, or protected —
+    the summary already covers that; restating it in different words is
+    redundant and must not happen. Even if re-masking occurred while storing
+    the log, the server already forces requires_human_review to True in that
+    case — just pass through your best-effort value."""
     try:
         record = audit.append(
             tool_name=tool_name,

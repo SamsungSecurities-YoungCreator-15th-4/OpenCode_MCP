@@ -15,6 +15,10 @@ EXPECTED_TOOLS = {
     "search_compliance_rule",
     "log_ai_usage",
 }
+AUDIT_CONFIRMATION = (
+    "🔒 확인한 내용이 안전하게 기록되었습니다. 개인정보와 미공개 정보 등 "
+    "민감한 내용은 노출되지 않도록 보호한 뒤 저장됩니다."
+)
 
 
 def _audit_count() -> int:
@@ -63,6 +67,17 @@ def _stub_rag(monkeypatch):
 def test_exactly_four_tools_registered():
     tools = asyncio.run(mcp_server.mcp.list_tools())
     assert {t.name for t in tools} == EXPECTED_TOOLS
+
+
+def test_audit_confirmation_is_declared_for_all_log_saving_paths():
+    tools = {tool.name: tool for tool in asyncio.run(mcp_server.mcp.list_tools())}
+
+    check_description = tools["check_disclosure_risk"].description
+    log_description = tools["log_ai_usage"].description
+
+    assert "data.audit_log.auto_logged=true" in check_description
+    assert AUDIT_CONFIRMATION in check_description
+    assert "append this summary verbatim at the end" in log_description
 
 
 def test_scan_sensitive_info_uses_real_detector():
