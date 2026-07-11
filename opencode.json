@@ -25,7 +25,12 @@
         ".venv/bin/python",
         "mcp_server.py"
       ],
-      "enabled": true
+      "enabled": true,
+      "timeout": 600000,
+      "environment": {
+        "RAG_GENERATE_ANSWER": "0",
+        "SCAN_MAX_FINDINGS": "10"
+      }
     }
   },
   "provider": {

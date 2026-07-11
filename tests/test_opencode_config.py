@@ -38,6 +38,9 @@ def test_only_local_compliance_mcp_is_enabled():
     assert server["type"] == "local"
     assert server["enabled"] is True
     assert server["command"] == [".venv/bin/python", "mcp_server.py"]
+    assert server["timeout"] == 600_000
+    assert server["environment"]["RAG_GENERATE_ANSWER"] == "0"
+    assert server["environment"]["SCAN_MAX_FINDINGS"] == "10"
 
 
 def test_runtime_rules_define_non_overlapping_tool_routes():

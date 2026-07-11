@@ -85,6 +85,36 @@ python3 -m venv .venv
 `opencode.json`의 MCP command가 `.venv/bin/python` 상대경로를 사용하므로, venv는 반드시 레포 루트에 `.venv` 이름으로 만들고 OpenCode도 레포 루트에서 실행한다.
 (Windows는 WSL 사용을 권장한다. 네이티브 Windows에서 쓰려면 `opencode.json`의 경로를 `.venv\Scripts\python.exe`로 로컬에서 수정해야 하며, 이 구성은 검증되지 않았다.)
 
+### PDF 첨부
+
+OpenCode는 PDF 첨부를 MCP의 `file_path`로 자동 변환하지 않고 모델 입력에 바이너리로
+전달한다. 텍스트 전용 qwen이 이를 직접 읽거나 한글 경로를 정확히 재생성할 수 없으므로,
+프로젝트 로컬 플러그인 `.opencode/plugins/compliance-pdf-attachment.js`가 다음을 수행한다.
+
+1. PDF 바이너리를 모델 입력에서 제거한다.
+2. 원본을 복사하지 않고 `/tmp` 아래에 ASCII 심볼릭 링크를 만든다.
+3. qwen이 그 경로를 scan/check tool의 `file_path`로 전달하도록 지시한다.
+4. OpenCode 종료 시 임시 링크를 삭제한다.
+
+플러그인은 OpenCode 시작 시 자동 로드된다. 변경 후 OpenCode를 재시작하고 TUI/VS Code
+Extension에서 PDF를 첨부하거나 CLI에서 아래처럼 실행한다.
+
+```bash
+opencode run --file "/절대/경로/검토자료.pdf" \
+  "첨부 PDF의 민감정보와 미공개중요정보 위험을 모두 검사해줘"
+```
+
+tool 호출 입력에 `text: ""`와 ASCII `/tmp/.../attachment-1.pdf`가 표시되면 정상이다.
+`opencode run --attach ... --file ...`처럼 서버가 원본 로컬 경로를 알 수 없는 첨부는
+검사했다고 가장하지 않고 보수적으로 실패한다.
+
+CPU 환경에서 `check_disclosure_risk`의 내부 qwen 답변 생성과 OpenCode의 최종 답변
+생성을 연속 실행하면 MCP 기본 제한시간을 넘길 수 있다. 운영 `opencode.json`은 MCP
+요청 제한을 10분으로 늘리고 `RAG_GENERATE_ANSWER=0`으로 내부 중복 생성을 끈다.
+검색 임계값, 인용 검증, 결정론 summary와 근거 snippet은 그대로 반환된다.
+또한 `SCAN_MAX_FINDINGS=10`으로 전체 건수·마스킹은 유지하면서 상세 finding 배열만
+제한해 긴 문서의 최종 qwen 프리필 크기를 줄인다.
+
 ### 5. RAG 코퍼스 준비
 
 규정 PDF 또는 텍스트 파일을 레포 루트 기준 `compliance/rag/data/`에 둔다. 이 경로는

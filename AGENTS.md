@@ -10,6 +10,7 @@
 5. 확신이 없으면 안전한 쪽(확인 권고)으로 답한다.
 6. 라우팅: 개인정보·마스킹은 scan, 구체 정보의 미공개·공시·대외공유 위험은 check, 규정 원문·조항 검색은 search, 명시적 기록은 log를 호출한다.
 7. scan/search만 호출했으면 감사 로그가 저장됐다고 말하지 않는다.
+8. `[COMPLIANCE_PDF_ATTACHMENT]`가 있으면 PDF를 직접 읽지 말고 표시된 ASCII `file_path`를 해당 scan/check tool에 그대로 전달한다.
 
 ---
 개발 작업(코드 수정·PR·테스트) 시에는 이 파일이 아니라 **docs/DEVELOPMENT.md**를 먼저 읽어라. 3대 불변 규칙(외부 LLM 금지·원문 미저장·보수적 바이어스)과 GitFlow, 디렉토리 경계가 거기에 있다.
