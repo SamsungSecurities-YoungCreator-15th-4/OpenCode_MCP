@@ -52,8 +52,10 @@ const includeReadPath = process.argv[3] === "true"
   const alias = match?.[1]
   const beforeDispose = alias ? fs.existsSync(alias) : false
   const target = alias ? fs.realpathSync(alias) : null
+  await hooks.event({ event: { type: "session.idle", properties: { sessionID: "ses_test" } } })
+  const afterIdle = alias ? fs.existsSync(alias) : false
   await hooks.dispose()
-  console.log(JSON.stringify({ parts, text, alias, beforeDispose, target, afterDispose: alias ? fs.existsSync(alias) : false }))
+  console.log(JSON.stringify({ parts, text, alias, beforeDispose, target, afterIdle, afterDispose: alias ? fs.existsSync(alias) : false }))
 })().catch((error) => {
   console.error(error)
   process.exit(1)
@@ -84,6 +86,7 @@ def test_pdf_attachment_becomes_ascii_file_path_without_binary(tmp_path):
     assert result["beforeDispose"] is True
     assert Path(result["target"]) == pdf.resolve()
     assert result["alias"].isascii()
+    assert result["afterIdle"] is False
     assert result["afterDispose"] is False
 
 

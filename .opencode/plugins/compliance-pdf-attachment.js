@@ -3,7 +3,34 @@ import os from "node:os"
 import path from "node:path"
 
 const READ_PREFIX = "Called the Read tool with the following input:"
-const ROOT = path.join(os.tmpdir(), `opencode-compliance-pdf-${process.pid}`)
+const ROOT_PREFIX = "opencode-compliance-pdf-"
+const ROOT = path.join(os.tmpdir(), `${ROOT_PREFIX}${process.pid}`)
+
+function sessionDir(sessionID) {
+  const safeSession = String(sessionID || "session").replace(/[^A-Za-z0-9_-]/g, "_")
+  return path.join(ROOT, safeSession)
+}
+
+async function cleanupStaleRoots() {
+  let entries
+  try {
+    entries = await fs.readdir(os.tmpdir(), { withFileTypes: true })
+  } catch {
+    return
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !entry.name.startsWith(ROOT_PREFIX)) continue
+    const pid = Number(entry.name.slice(ROOT_PREFIX.length))
+    if (!Number.isInteger(pid) || pid === process.pid) continue
+    try {
+      process.kill(pid, 0)
+    } catch (error) {
+      if (error?.code === "ESRCH") {
+        await fs.rm(path.join(os.tmpdir(), entry.name), { recursive: true, force: true })
+      }
+    }
+  }
+}
 
 function readFilePath(part) {
   if (part?.type !== "text" || !part.synthetic || !part.text?.startsWith(READ_PREFIX)) return
@@ -31,8 +58,7 @@ async function existingPdf(value) {
 }
 
 async function aliasPdf(sessionID, index, source) {
-  const safeSession = String(sessionID || "session").replace(/[^A-Za-z0-9_-]/g, "_")
-  const dir = path.join(ROOT, safeSession)
+  const dir = sessionDir(sessionID)
   await fs.mkdir(dir, { recursive: true, mode: 0o700 })
   const alias = path.join(dir, `attachment-${index + 1}.pdf`)
   await fs.rm(alias, { force: true })
@@ -65,6 +91,7 @@ function bridgeMessage(ready, blocked) {
 }
 
 export async function CompliancePdfAttachmentPlugin() {
+  await cleanupStaleRoots()
   return {
     "chat.message": async (input, output) => {
       const pdfs = output.parts.filter(
@@ -133,6 +160,11 @@ export async function CompliancePdfAttachmentPlugin() {
       })
       next.splice(Math.min(firstPdf, next.length), 0, replacement)
       output.parts.splice(0, output.parts.length, ...next)
+    },
+    event: async ({ event }) => {
+      if (event?.type !== "session.idle" && event?.type !== "session.deleted") return
+      const sessionID = event.properties?.sessionID || event.properties?.info?.id
+      if (sessionID) await fs.rm(sessionDir(sessionID), { recursive: true, force: true })
     },
     dispose: async () => {
       await fs.rm(ROOT, { recursive: true, force: true })
