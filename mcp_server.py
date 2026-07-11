@@ -17,10 +17,7 @@ AUDIT_CONFIRMATION = (
     "🔒 확인한 내용이 안전하게 기록되었습니다. 개인정보와 미공개 정보 등 "
     "민감한 내용은 노출되지 않도록 보호한 뒤 저장됩니다."
 )
-CHECK_LOG_SKIP_SUMMARY = (
-    "check_disclosure_risk 감사 로그는 해당 tool 실행 시 자동 기록되므로 "
-    "log_ai_usage에서는 중복 기록을 생략했습니다."
-)
+CHECK_LOG_SKIP_SUMMARY = ""
 
 
 def _with_audit_confirmation(summary: str) -> str:
@@ -163,16 +160,18 @@ def log_ai_usage(
     The input text is stored only as a SHA-256 hash, never in plaintext;
     result_summary must already be free of sensitive values. The record id and
     hash are returned in the 'data' field of the response for internal/audit
-    lookup only — never read them aloud to the user. The 'summary' field in the
-    returned dictionary is the final, complete confirmation message for the
-    user as-is: if this tool is called after another tool, include the earlier
-    tool answer first and append this summary verbatim at the end; if this tool
-    is called alone, repeat this summary verbatim as your final reply. Do not
-    add any other sentence about the log being saved, masked, or protected —
-    the summary already covers that; restating it in different words is
-    redundant and must not happen. Even if re-masking occurred while storing
-    the log, the server already forces requires_human_review to True in that
-    case — just pass through your best-effort value."""
+    lookup only — never read them aloud to the user. For non-skipped responses,
+    the 'summary' field in the returned dictionary is the final, complete
+    confirmation message for the user as-is: if this tool is called after
+    another tool, include the earlier tool answer first and append this summary
+    verbatim at the end; if this tool is called alone, repeat this summary
+    verbatim as your final reply. For skipped responses, do not show this
+    tool's summary to the user. Do not add any other sentence about the log
+    being saved, masked, or protected — the summary already covers that;
+    restating it in different words is redundant and must not happen. Even if
+    re-masking occurred while storing the log, the server already forces
+    requires_human_review to True in that case — just pass through your
+    best-effort value."""
     normalized_tool_name = tool_name.strip().lower() if isinstance(tool_name, str) else ""
     if normalized_tool_name == "check_disclosure_risk":
         return ok(

@@ -75,7 +75,9 @@ def test_audit_confirmation_is_not_leaked_through_tool_descriptions():
     assert "data.audit_log.auto_logged=true" in check_description
     assert "returned summary already includes the audit confirmation" in check_description
     assert "duplicate check_disclosure_risk log requests are ignored" in log_description
-    assert "append this summary verbatim at the end" in log_description
+    assert "append this summary" in log_description
+    assert "verbatim at the end" in log_description
+    assert "For skipped responses, do not show this" in log_description
     for tool in tools.values():
         assert AUDIT_CONFIRMATION not in tool.description
 
