@@ -95,6 +95,32 @@ def init_db(db_path: str | None = None) -> None:
     _connect(db_path or _default_db_path()).close()
 
 
+def latest_record_matches(
+    tool_name: str,
+    input_text: str,
+    db_path: str | None = None,
+) -> bool:
+    """가장 최근 레코드의 tool과 입력 해시가 모두 같은지 확인한다.
+
+    자동 기록 직후 호스트 모델이 log_ai_usage를 다시 호출하는 경우만 중복으로
+    간주한다. 원문은 조회하거나 저장하지 않고, 비교에 SHA-256 해시만 사용한다.
+    """
+    conn = _connect(db_path or _default_db_path())
+    try:
+        row = conn.execute(
+            "SELECT tool_name, input_hash FROM audit_log ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    if row is None:
+        return False
+    return (
+        row["tool_name"].strip().casefold() == tool_name.strip().casefold()
+        and row["input_hash"] == _sha256(input_text)
+    )
+
+
 def _last_record_hash(conn: sqlite3.Connection) -> str:
     row = conn.execute(
         "SELECT record_hash FROM audit_log ORDER BY id DESC LIMIT 1"

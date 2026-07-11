@@ -69,15 +69,20 @@ def test_exactly_four_tools_registered():
 def test_audit_confirmation_is_not_leaked_through_tool_descriptions():
     tools = {tool.name: tool for tool in asyncio.run(mcp_server.mcp.list_tools())}
 
+    scan_description = tools["scan_sensitive_info"].description
     check_description = tools["check_disclosure_risk"].description
+    search_description = tools["search_compliance_rule"].description
     log_description = tools["log_ai_usage"].description
 
     assert "data.audit_log.auto_logged=true" in check_description
-    assert "returned summary already includes the audit confirmation" in check_description
-    assert "duplicate check_disclosure_risk log requests are ignored" in log_description
-    assert "append this summary" in log_description
-    assert "verbatim at the end" in log_description
-    assert "For skipped responses, do not show this" in log_description
+    for keyword in ("미공개중요정보", "공시", "인수합병", "유상증자"):
+        assert keyword in check_description
+    assert "check_disclosure_risk를 호출" in scan_description
+    assert "check_disclosure_risk를 사용" in search_description
+    assert "감사 로그를 기록하지 않는다" in scan_description
+    assert "감사 로그를 기록하지 않는다" in search_description
+    assert "skipped=true" in log_description
+    assert sum(len(tool.description) for tool in tools.values()) <= 1_700
     for tool in tools.values():
         assert AUDIT_CONFIRMATION not in tool.description
 
@@ -188,7 +193,7 @@ def test_log_ai_usage_skips_duplicate_check_disclosure_risk_record():
     assert "record_hash" not in duplicate["data"]
 
 
-def test_log_ai_usage_check_skip_does_not_emit_audit_confirmation_without_new_record():
+def test_log_ai_usage_records_check_when_no_matching_auto_log_exists():
     result = mcp_server.log_ai_usage(
         "check_disclosure_risk",
         "실적 발표 전 대외 공유 자료입니다.",
@@ -196,11 +201,26 @@ def test_log_ai_usage_check_skip_does_not_emit_audit_confirmation_without_new_re
         True,
     )
 
-    assert _audit_count() == 0
+    assert _audit_count() == 1
     assert result["ok"] is True
-    assert result["summary"] == mcp_server.CHECK_LOG_SKIP_SUMMARY
-    assert AUDIT_CONFIRMATION not in result["summary"]
-    assert result["data"]["skipped"] is True
+    assert result["summary"] == AUDIT_CONFIRMATION
+    assert result["data"]["tool_name"] == "check_disclosure_risk"
+    assert "skipped" not in result["data"]
+
+
+def test_log_ai_usage_records_check_when_latest_input_is_different():
+    mcp_server.check_disclosure_risk("이전 실적 발표 전 자료")
+
+    result = mcp_server.log_ai_usage(
+        "check_disclosure_risk",
+        "새로운 인수합병 공시 전 자료",
+        "미공개중요정보 점검 결과",
+        True,
+    )
+
+    assert _audit_count() == 2
+    assert result["summary"] == AUDIT_CONFIRMATION
+    assert "skipped" not in result["data"]
 
 
 def test_log_ai_usage_summary_is_audit_confirmation_for_logged_events():
