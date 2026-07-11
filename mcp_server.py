@@ -153,7 +153,20 @@ def log_ai_usage(
     비어 있으면 새 기록이 없으므로 저장됐다고 말하지 않는다. 그 외에는 summary를
     그대로 사용하고 id/hash를 노출하지 않는다. input_text는 원문 대신 SHA-256
     해시로만 저장되며 result_summary는 저장 직전 다시 마스킹된다."""
-    normalized_tool_name = tool_name.strip().lower() if isinstance(tool_name, str) else ""
+    if not all(isinstance(value, str) for value in (tool_name, input_text, result_summary)):
+        return fail(
+            "log_ai_usage",
+            "올바르지 않은 인자 형식입니다. 모든 텍스트 필드는 문자열이어야 합니다.",
+            "invalid_arguments: text fields must be strings",
+        )
+    if not isinstance(requires_human_review, bool):
+        return fail(
+            "log_ai_usage",
+            "올바르지 않은 인자 형식입니다. 검토 여부는 boolean이어야 합니다.",
+            "invalid_arguments: requires_human_review must be boolean",
+        )
+
+    normalized_tool_name = tool_name.strip().lower()
     try:
         is_duplicate_check = (
             normalized_tool_name == "check_disclosure_risk"

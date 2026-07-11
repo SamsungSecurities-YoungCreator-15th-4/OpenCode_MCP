@@ -105,6 +105,9 @@ def latest_record_matches(
     자동 기록 직후 호스트 모델이 log_ai_usage를 다시 호출하는 경우만 중복으로
     간주한다. 원문은 조회하거나 저장하지 않고, 비교에 SHA-256 해시만 사용한다.
     """
+    if not isinstance(tool_name, str) or not isinstance(input_text, str):
+        return False
+
     conn = _connect(db_path or _default_db_path())
     try:
         row = conn.execute(

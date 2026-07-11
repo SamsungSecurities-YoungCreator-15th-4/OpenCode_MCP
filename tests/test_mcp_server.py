@@ -223,6 +223,32 @@ def test_log_ai_usage_records_check_when_latest_input_is_different():
     assert "skipped" not in result["data"]
 
 
+@pytest.mark.parametrize(
+    "invalid_field",
+    [
+        {"tool_name": None},
+        {"input_text": None},
+        {"result_summary": None},
+        {"requires_human_review": 1},
+    ],
+)
+def test_log_ai_usage_rejects_invalid_argument_types(invalid_field):
+    arguments = {
+        "tool_name": "scan_sensitive_info",
+        "input_text": "점검 원문",
+        "result_summary": "점검 요약",
+        "requires_human_review": True,
+    }
+    arguments.update(invalid_field)
+
+    result = mcp_server.log_ai_usage(**arguments)
+
+    assert result["ok"] is False
+    assert result["requires_human_review"] is True
+    assert result["error"].startswith("invalid_arguments:")
+    assert _audit_count() == 0
+
+
 def test_log_ai_usage_summary_is_audit_confirmation_for_logged_events():
     result = mcp_server.log_ai_usage(
         "scan_sensitive_info",
