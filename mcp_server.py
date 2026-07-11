@@ -75,17 +75,14 @@ def _apply_file_meta(result: dict, extracted) -> dict:
 
 @mcp.tool()
 def scan_sensitive_info(text: str = "", file_path: str = "") -> dict:
-    """Scan text for sensitive information and financial prohibited claims before
-    sharing it externally. Pass exactly one of text or file_path (local
-    .pdf/.txt/.md file); with file_path the raw document never enters the chat.
+    """개인정보·금융 금지표현 탐지와 마스킹 전용 tool이다.
 
-    The returned result never contains original sensitive values. Use
-    data.masked_text when showing the scanned text to the user. If this scan
-    result is later recorded with log_ai_usage, pass data.log_safe_summary as
-    result_summary, not the original input text. Detected personal information
-    also requires human review; masking prevents plaintext exposure but does
-    not mean the input is risk-free. Prohibited financial claims or
-    internal/confidential keywords also require human review.
+    주민번호·전화·이메일·계좌·카드 또는 민감정보 스캔/마스킹 요청에 사용한다.
+    미공개중요정보, 공시 전 실적, 인수합병(M&A), 유상증자, 대외공유 위험에는
+    사용하지 말고 check_disclosure_risk를 호출한다. text 또는 로컬
+    file_path(.pdf/.txt/.md) 하나만 전달하고, 결과는 data.masked_text를 사용한다.
+    이 tool은 감사 로그를 기록하지 않는다. 실제로 log_ai_usage를 호출하지 않았다면
+    기록됐다고 말하지 않는다.
     """
     content, extracted, err = _load_input("scan_sensitive_info", text, file_path)
     if err is not None:
@@ -95,19 +92,14 @@ def scan_sensitive_info(text: str = "", file_path: str = "") -> dict:
 
 @mcp.tool()
 def check_disclosure_risk(text: str = "", file_path: str = "") -> dict:
-    """Check whether text may contain undisclosed material information
-    that requires compliance officer confirmation before external
-    disclosure. Advisory only — it never gives a final legal judgment.
-    Pass exactly one of text or file_path (local .pdf/.txt/.md file).
+    """미공개중요정보·공시·대외공유 위험 스크리닝 전용 tool이다.
 
-    This tool automatically writes a tamper-evident audit record in the
-    same process after the disclosure-risk check is completed, so material
-    disclosure decisions do not depend on the LLM separately calling
-    log_ai_usage. When this tool returns data.audit_log.auto_logged=true,
-    an audit log was saved even though log_ai_usage was not called. In that
-    case, the returned summary already includes the audit confirmation that
-    must be shown to the user. Use the returned summary as-is, and do not
-    invent, repeat, or expose record ids or hashes.
+    구체 문서나 정보를 공유해도 되는지, 공시 전 실적·인수합병(M&A)·유상증자·
+    투자정보인지 묻는 경우 반드시 이 tool을 사용하고 scan_sensitive_info나
+    search_compliance_rule로 대신하지 않는다. text 또는 로컬
+    file_path(.pdf/.txt/.md) 하나만 전달한다. 최종 법률 판단은 하지 않는다.
+    같은 호출에서 감사 로그를 자동 기록하며 data.audit_log.auto_logged=true를
+    반환한다. summary에 기록 확인이 이미 있으므로 그대로 사용하고 id/hash는 노출하지 않는다.
     """
     content, extracted, err = _load_input("check_disclosure_risk", text, file_path)
     if err is not None:
@@ -137,10 +129,12 @@ def check_disclosure_risk(text: str = "", file_path: str = "") -> dict:
 
 @mcp.tool()
 def search_compliance_rule(query: str) -> dict:
-    """Search internal compliance rules and return relevant rule excerpts
-    as evidence for a compliance question. This search-only tool does not
-    automatically write an audit log; call log_ai_usage separately when the
-    search event itself must be retained as evidence."""
+    """규정 원문·조항 검색과 근거 인용 전용 tool이다.
+
+    사용자가 규정/법령 검색, 조항 번호, 원문 또는 근거 인용을 명시적으로 요청할
+    때 사용한다. 구체 정보의 공유 가능 여부나 미공개중요정보·공시 위험은
+    check_disclosure_risk를 사용한다. 이 tool은 감사 로그를 기록하지 않는다.
+    실제로 log_ai_usage를 호출하지 않았다면 기록됐다고 말하지 않는다."""
     return rag.search_compliance_rule(query)
 
 
@@ -151,29 +145,37 @@ def log_ai_usage(
     result_summary: str,
     requires_human_review: bool,
 ) -> dict:
-    """Record an AI-usage / compliance-check event to the local tamper-evident
-    audit log so there is a compliance audit trail of what was checked with AI.
-    Call this after a sensitive-info scan or search-only request when that
-    event must be retained. check_disclosure_risk already records its own audit
-    event automatically, so do not call this tool for check_disclosure_risk;
-    duplicate check_disclosure_risk log requests are ignored by the server.
-    The input text is stored only as a SHA-256 hash, never in plaintext;
-    result_summary must already be free of sensitive values. The record id and
-    hash are returned in the 'data' field of the response for internal/audit
-    lookup only — never read them aloud to the user. For non-skipped responses,
-    the 'summary' field in the returned dictionary is the final, complete
-    confirmation message for the user as-is: if this tool is called after
-    another tool, include the earlier tool answer first and append this summary
-    verbatim at the end; if this tool is called alone, repeat this summary
-    verbatim as your final reply. For skipped responses, do not show this
-    tool's summary to the user. Do not add any other sentence about the log
-    being saved, masked, or protected — the summary already covers that;
-    restating it in different words is redundant and must not happen. Even if
-    re-masking occurred while storing the log, the server already forces
-    requires_human_review to True in that case — just pass through your
-    best-effort value."""
-    normalized_tool_name = tool_name.strip().lower() if isinstance(tool_name, str) else ""
-    if normalized_tool_name == "check_disclosure_risk":
+    """감사 로그 기록 전용 tool이다.
+
+    사용자가 기록을 명시 요청했거나 scan_sensitive_info/search_compliance_rule
+    결과를 기록할 때 사용한다. check_disclosure_risk는 자동 기록하므로 같은 입력의
+    직전 기록이 있으면 skipped=true로 중복을 막는다. skipped=true 또는 summary가
+    비어 있으면 새 기록이 없으므로 저장됐다고 말하지 않는다. 그 외에는 summary를
+    그대로 사용하고 id/hash를 노출하지 않는다. input_text는 원문 대신 SHA-256
+    해시로만 저장되며 result_summary는 저장 직전 다시 마스킹된다."""
+    if not all(isinstance(value, str) for value in (tool_name, input_text, result_summary)):
+        return fail(
+            "log_ai_usage",
+            "올바르지 않은 인자 형식입니다. 모든 텍스트 필드는 문자열이어야 합니다.",
+            "invalid_arguments: text fields must be strings",
+        )
+    if not isinstance(requires_human_review, bool):
+        return fail(
+            "log_ai_usage",
+            "올바르지 않은 인자 형식입니다. 검토 여부는 boolean이어야 합니다.",
+            "invalid_arguments: requires_human_review must be boolean",
+        )
+
+    normalized_tool_name = tool_name.strip().lower()
+    try:
+        is_duplicate_check = (
+            normalized_tool_name == "check_disclosure_risk"
+            and audit.latest_record_matches("check_disclosure_risk", input_text)
+        )
+    except Exception as exc:
+        return fail("log_ai_usage", "감사 로그 확인에 실패했습니다.", str(exc))
+
+    if is_duplicate_check:
         return ok(
             "log_ai_usage",
             CHECK_LOG_SKIP_SUMMARY,
@@ -187,7 +189,11 @@ def log_ai_usage(
 
     try:
         record = audit.append(
-            tool_name=tool_name,
+            tool_name=(
+                "check_disclosure_risk"
+                if normalized_tool_name == "check_disclosure_risk"
+                else tool_name
+            ),
             input_text=input_text,
             result_summary=result_summary,
             requires_human_review=requires_human_review,
