@@ -17,6 +17,10 @@ AUDIT_CONFIRMATION = (
     "🔒 확인한 내용이 안전하게 기록되었습니다. 개인정보와 미공개 정보 등 "
     "민감한 내용은 노출되지 않도록 보호한 뒤 저장됩니다."
 )
+CHECK_LOG_SKIP_SUMMARY = (
+    "check_disclosure_risk 감사 로그는 해당 tool 실행 시 자동 기록되므로 "
+    "log_ai_usage에서는 중복 기록을 생략했습니다."
+)
 
 
 def _with_audit_confirmation(summary: str) -> str:
@@ -104,10 +108,9 @@ def check_disclosure_risk(text: str = "", file_path: str = "") -> dict:
     disclosure decisions do not depend on the LLM separately calling
     log_ai_usage. When this tool returns data.audit_log.auto_logged=true,
     an audit log was saved even though log_ai_usage was not called. In that
-    case, your final reply must include this exact audit confirmation sentence
-    at the end, after the disclosure-risk answer, and must not mention record
-    ids or hashes:
-    "🔒 확인한 내용이 안전하게 기록되었습니다. 개인정보와 미공개 정보 등 민감한 내용은 노출되지 않도록 보호한 뒤 저장됩니다."
+    case, the returned summary already includes the audit confirmation that
+    must be shown to the user. Use the returned summary as-is, and do not
+    invent, repeat, or expose record ids or hashes.
     """
     content, extracted, err = _load_input("check_disclosure_risk", text, file_path)
     if err is not None:
@@ -174,7 +177,7 @@ def log_ai_usage(
     if normalized_tool_name == "check_disclosure_risk":
         return ok(
             "log_ai_usage",
-            AUDIT_CONFIRMATION,
+            CHECK_LOG_SKIP_SUMMARY,
             data={
                 "skipped": True,
                 "skip_reason": "check_disclosure_risk_auto_logs_audit_record",
