@@ -16,6 +16,7 @@ NODE = shutil.which("node")
 def _run_plugin(pdf_path: Path | None, include_read_path: bool = True) -> dict:
     script = r"""
 const fs = require("node:fs")
+const path = require("node:path")
 const pdfPath = process.argv[2] || ""
 const includeReadPath = process.argv[3] === "true"
 
@@ -41,7 +42,7 @@ const includeReadPath = process.argv[3] === "true"
     messageID: "msg_test",
     type: "file",
     mime: "application/pdf",
-    filename: pdfPath ? pdfPath.split("/").at(-1) : "attachment.pdf",
+    filename: pdfPath ? path.basename(pdfPath) : "attachment.pdf",
     url: "data:application/pdf;base64,JVBERg==",
   })
   parts.push({ id: "prompt", type: "text", text: "첨부 PDF를 검사해줘" })
@@ -52,10 +53,13 @@ const includeReadPath = process.argv[3] === "true"
   const alias = match?.[1]
   const beforeDispose = alias ? fs.existsSync(alias) : false
   const target = alias ? fs.realpathSync(alias) : null
+  const root = alias ? path.dirname(path.dirname(alias)) : null
+  const rootMode = root ? (fs.statSync(root).mode & 0o777).toString(8) : null
+  const rootName = root ? path.basename(root) : null
   await hooks.event({ event: { type: "session.idle", properties: { sessionID: "ses_test" } } })
   const afterIdle = alias ? fs.existsSync(alias) : false
   await hooks.dispose()
-  console.log(JSON.stringify({ parts, text, alias, beforeDispose, target, afterIdle, afterDispose: alias ? fs.existsSync(alias) : false }))
+  console.log(JSON.stringify({ parts, text, alias, beforeDispose, target, rootMode, rootName, afterIdle, afterDispose: alias ? fs.existsSync(alias) : false }))
 })().catch((error) => {
   console.error(error)
   process.exit(1)
@@ -86,6 +90,9 @@ def test_pdf_attachment_becomes_ascii_file_path_without_binary(tmp_path):
     assert result["beforeDispose"] is True
     assert Path(result["target"]) == pdf.resolve()
     assert result["alias"].isascii()
+    assert result["rootMode"] == "700"
+    assert result["rootName"].startswith("opencode-compliance-pdf-")
+    assert result["rootName"].count("-") >= 4
     assert result["afterIdle"] is False
     assert result["afterDispose"] is False
 
@@ -108,6 +115,7 @@ def test_pdf_bridge_preserves_non_pdf_attachment_context(tmp_path):
     txt.write_text("참고 내용", encoding="utf-8")
     script = r"""
 const fs = require("node:fs")
+const path = require("node:path")
 ;(async () => {
   const source = fs.readFileSync(process.argv[1], "utf8")
   const module = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`)
@@ -121,9 +129,9 @@ const fs = require("node:fs")
   })
   const parts = [
     read("pdf-read", pdf),
-    { id: "pdf", type: "file", mime: "application/pdf", filename: pdf.split("/").at(-1) },
+    { id: "pdf", type: "file", mime: "application/pdf", filename: path.basename(pdf) },
     read("txt-read", txt),
-    { id: "txt", type: "file", mime: "text/plain", filename: txt.split("/").at(-1) },
+    { id: "txt", type: "file", mime: "text/plain", filename: path.basename(txt) },
   ]
   await hooks["chat.message"]({ sessionID: "ses_mixed" }, { parts })
   await hooks.dispose()
@@ -142,6 +150,61 @@ const fs = require("node:fs")
     assert not any(part.get("mime") == "application/pdf" for part in parts)
     assert any(part.get("mime") == "text/plain" for part in parts)
     assert any(str(txt) in part.get("text", "") for part in parts)
+
+
+@pytest.mark.skipif(NODE is None, reason="Node.js is required by OpenCode")
+def test_plugin_instances_use_isolated_temp_roots(tmp_path):
+    pdf = tmp_path / "동시검토.pdf"
+    pdf.write_bytes(b"%PDF-1.4\nsynthetic test\n%%EOF")
+    script = r"""
+const fs = require("node:fs")
+const path = require("node:path")
+;(async () => {
+  const source = fs.readFileSync(process.argv[1], "utf8")
+  const module = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`)
+  const pdf = process.argv[2]
+  const makeParts = (sessionID) => [
+    {
+      id: `read-${sessionID}`,
+      type: "text",
+      synthetic: true,
+      text: `Called the Read tool with the following input: ${JSON.stringify({ filePath: pdf })}`,
+    },
+    { id: `pdf-${sessionID}`, type: "file", mime: "application/pdf", filename: path.basename(pdf) },
+  ]
+  const alias = (parts) => parts.map((part) => part.text || "").join("\n").match(/MCP file_path: (.+)/)?.[1]
+  const first = await module.CompliancePdfAttachmentPlugin({})
+  const second = await module.CompliancePdfAttachmentPlugin({})
+  const firstParts = makeParts("one")
+  const secondParts = makeParts("two")
+  await first["chat.message"]({ sessionID: "one" }, { parts: firstParts })
+  await second["chat.message"]({ sessionID: "two" }, { parts: secondParts })
+  const firstAlias = alias(firstParts)
+  const secondAlias = alias(secondParts)
+  await first.dispose()
+  const secondAfterFirstDispose = fs.existsSync(secondAlias)
+  await second.dispose()
+  console.log(JSON.stringify({
+    firstAlias,
+    secondAlias,
+    rootsDiffer: path.dirname(path.dirname(firstAlias)) !== path.dirname(path.dirname(secondAlias)),
+    secondAfterFirstDispose,
+    secondAfterSecondDispose: fs.existsSync(secondAlias),
+  }))
+})()
+"""
+    result = subprocess.run(
+        [NODE, "-e", script, str(PLUGIN), str(pdf)],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    data = json.loads(result.stdout)
+
+    assert data["rootsDiffer"] is True
+    assert data["secondAfterFirstDispose"] is True
+    assert data["secondAfterSecondDispose"] is False
 
 
 @pytest.mark.skipif(NODE is None, reason="Node.js is required by OpenCode")

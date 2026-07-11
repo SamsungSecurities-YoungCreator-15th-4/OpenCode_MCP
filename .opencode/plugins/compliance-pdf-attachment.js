@@ -4,11 +4,11 @@ import path from "node:path"
 
 const READ_PREFIX = "Called the Read tool with the following input:"
 const ROOT_PREFIX = "opencode-compliance-pdf-"
-const ROOT = path.join(os.tmpdir(), `${ROOT_PREFIX}${process.pid}`)
+const ROOT_PATTERN = /^opencode-compliance-pdf-(\d+)-/
 
-function sessionDir(sessionID) {
+function sessionDir(root, sessionID) {
   const safeSession = String(sessionID || "session").replace(/[^A-Za-z0-9_-]/g, "_")
-  return path.join(ROOT, safeSession)
+  return path.join(root, safeSession)
 }
 
 async function cleanupStaleRoots() {
@@ -19,14 +19,25 @@ async function cleanupStaleRoots() {
     return
   }
   for (const entry of entries) {
-    if (!entry.isDirectory() || !entry.name.startsWith(ROOT_PREFIX)) continue
-    const pid = Number(entry.name.slice(ROOT_PREFIX.length))
+    const match = entry.name.match(ROOT_PATTERN)
+    if (!entry.isDirectory() || !match) continue
+    const fullPath = path.join(os.tmpdir(), entry.name)
+    let stat
+    try {
+      stat = await fs.lstat(fullPath)
+    } catch {
+      continue
+    }
+    if (!stat.isDirectory() || stat.isSymbolicLink()) continue
+    if (typeof process.getuid === "function" && stat.uid !== process.getuid()) continue
+
+    const pid = Number(match[1])
     if (!Number.isInteger(pid) || pid === process.pid) continue
     try {
       process.kill(pid, 0)
     } catch (error) {
       if (error?.code === "ESRCH") {
-        await fs.rm(path.join(os.tmpdir(), entry.name), { recursive: true, force: true })
+        await fs.rm(fullPath, { recursive: true, force: true }).catch(() => {})
       }
     }
   }
@@ -57,8 +68,8 @@ async function existingPdf(value) {
   }
 }
 
-async function aliasPdf(sessionID, index, source) {
-  const dir = sessionDir(sessionID)
+async function aliasPdf(root, sessionID, index, source) {
+  const dir = sessionDir(root, sessionID)
   await fs.mkdir(dir, { recursive: true, mode: 0o700 })
   const alias = path.join(dir, `attachment-${index + 1}.pdf`)
   await fs.rm(alias, { force: true })
@@ -92,6 +103,8 @@ function bridgeMessage(ready, blocked) {
 
 export async function CompliancePdfAttachmentPlugin() {
   await cleanupStaleRoots()
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), `${ROOT_PREFIX}${process.pid}-`))
+  await fs.chmod(root, 0o700)
   return {
     "chat.message": async (input, output) => {
       const pdfs = output.parts.filter(
@@ -132,7 +145,7 @@ export async function CompliancePdfAttachmentPlugin() {
           continue
         }
         try {
-          ready.push({ index, alias: await aliasPdf(input.sessionID, index, source) })
+          ready.push({ index, alias: await aliasPdf(root, input.sessionID, index, source) })
         } catch {
           blocked.push({
             index,
@@ -164,10 +177,10 @@ export async function CompliancePdfAttachmentPlugin() {
     event: async ({ event }) => {
       if (event?.type !== "session.idle" && event?.type !== "session.deleted") return
       const sessionID = event.properties?.sessionID || event.properties?.info?.id
-      if (sessionID) await fs.rm(sessionDir(sessionID), { recursive: true, force: true })
+      if (sessionID) await fs.rm(sessionDir(root, sessionID), { recursive: true, force: true })
     },
     dispose: async () => {
-      await fs.rm(ROOT, { recursive: true, force: true })
+      await fs.rm(root, { recursive: true, force: true })
     },
   }
 }
