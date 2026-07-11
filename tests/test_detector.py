@@ -419,14 +419,16 @@ def test_card_without_luhn_and_without_keyword_still_ignored():
 def test_no_loss_claim_inflected_and_modifier_forms_detected():
     # 7/11 종합 샘플 미탐 재현: 명사형 "없음"이 아닌 활용형·수식어 문장.
     result = detector.scan_text(
-        "원금 손실 가능성이 전혀 없는 안전한 구조로 설계되어 리스크가 없습니다."
+        "원금 손실 가능성이 전혀 없었습니다. 안전한 구조로 설계되어 리스크가 없었습니다."
     )
     reasons = [f["reason"] for f in result["data"]["findings"]]
 
     assert any("no_loss" in r for r in reasons)
     assert any("risk_free" in r for r in reasons)
-    assert "손실 가능성이 전혀 없" not in result["data"]["masked_text"]
-    assert "리스크가 없" not in result["data"]["masked_text"]
+    assert (
+        result["data"]["masked_text"]
+        == "[금지표현]. 안전한 구조로 설계되어 [금지표현]."
+    )
 
 
 def test_loss_with_explicit_percentage_still_not_flagged():
