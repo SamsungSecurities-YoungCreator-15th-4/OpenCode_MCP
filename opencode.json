@@ -3,6 +3,21 @@
   "model": "ollama/qwen3-instruct-16k",
   "enabled_providers": ["ollama"],
   "autoupdate": false,
+  "share": "disabled",
+  "tools": {
+    "*": false,
+    "compliance-assistant_*": true
+  },
+  "permission": {
+    "*": "deny",
+    "compliance-assistant_*": "allow"
+  },
+  "agent": {
+    "build": {
+      "temperature": 0.1,
+      "steps": 4
+    }
+  },
   "mcp": {
     "compliance-assistant": {
       "type": "local",
@@ -10,7 +25,12 @@
         ".venv/bin/python",
         "mcp_server.py"
       ],
-      "enabled": true
+      "enabled": true,
+      "timeout": 600000,
+      "environment": {
+        "RAG_GENERATE_ANSWER": "0",
+        "SCAN_MAX_FINDINGS": "10"
+      }
     }
   },
   "provider": {

@@ -7,7 +7,7 @@
 
 입력은 PDF/TXT/MD를 지원한다. 조항 패턴이 있으면 조항 단위로, 없으면 plain
 text 청크로 적재한다. 파일명이 곧 출처(source)다.
-적재 경로 기본값은 data/chroma/ (CHROMA_PATH 환경변수로 변경 가능).
+적재 경로 기본값은 data/chroma_0_6/ (CHROMA_PATH 환경변수로 변경 가능).
 """
 
 import argparse

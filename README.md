@@ -82,8 +82,45 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ```
 
+`chromadb`는 CVE-2026-45829의 영향 범위(`1.0.0`~`1.5.9`) 밖인 `0.6.3`으로
+고정한다. 이 서비스는 Chroma API 서버를 열지 않고 로컬 `PersistentClient`만 사용하지만,
+패치 버전이 없는 critical 경고를 의존성 수준에서도 제거하기 위한 조치다. Chroma 1.x가 만든
+기존 `data/chroma/` 인덱스는 0.6.3과 역호환되지 않으므로 사용하지 않으며, 첫 RAG 호출 때
+`data/chroma_0_6/`에 로컬 코퍼스를 자동으로 다시 인덱싱한다. Chroma 익명 텔레메트리도
+비활성화하며 외부 Chroma 서버나 임베딩 함수를 사용하지 않는다.
+
 `opencode.json`의 MCP command가 `.venv/bin/python` 상대경로를 사용하므로, venv는 반드시 레포 루트에 `.venv` 이름으로 만들고 OpenCode도 레포 루트에서 실행한다.
 (Windows는 WSL 사용을 권장한다. 네이티브 Windows에서 쓰려면 `opencode.json`의 경로를 `.venv\Scripts\python.exe`로 로컬에서 수정해야 하며, 이 구성은 검증되지 않았다.)
+
+### PDF 첨부
+
+OpenCode는 PDF 첨부를 MCP의 `file_path`로 자동 변환하지 않고 모델 입력에 바이너리로
+전달한다. 텍스트 전용 qwen이 이를 직접 읽거나 한글 경로를 정확히 재생성할 수 없으므로,
+프로젝트 로컬 플러그인 `.opencode/plugins/compliance-pdf-attachment.js`가 다음을 수행한다.
+
+1. PDF 바이너리를 모델 입력에서 제거한다.
+2. 원본을 복사하지 않고 `/tmp` 아래에 ASCII 심볼릭 링크를 만든다.
+3. qwen이 그 경로를 scan/check tool의 `file_path`로 전달하도록 지시한다.
+4. 세션 완료/삭제 또는 OpenCode 종료 시 임시 링크를 삭제하고, 다음 시작 때 잔여 링크도 정리한다.
+
+플러그인은 OpenCode 시작 시 자동 로드된다. 변경 후 OpenCode를 재시작하고 TUI/VS Code
+Extension에서 PDF를 첨부하거나 CLI에서 아래처럼 실행한다.
+
+```bash
+opencode run --file "/절대/경로/검토자료.pdf" \
+  "첨부 PDF의 민감정보와 미공개중요정보 위험을 모두 검사해줘"
+```
+
+tool 호출 입력에 `text: ""`와 ASCII `/tmp/.../attachment-1.pdf`가 표시되면 정상이다.
+`opencode run --attach ... --file ...`처럼 서버가 원본 로컬 경로를 알 수 없는 첨부는
+검사했다고 가장하지 않고 보수적으로 실패한다.
+
+CPU 환경에서 `check_disclosure_risk`의 내부 qwen 답변 생성과 OpenCode의 최종 답변
+생성을 연속 실행하면 MCP 기본 제한시간을 넘길 수 있다. 운영 `opencode.json`은 MCP
+요청 제한을 10분으로 늘리고 `RAG_GENERATE_ANSWER=0`으로 내부 중복 생성을 끈다.
+검색 임계값, 인용 검증, 결정론 summary와 근거 snippet은 그대로 반환된다.
+또한 `SCAN_MAX_FINDINGS=10`으로 전체 건수·마스킹은 유지하면서 상세 finding 배열만
+제한해 긴 문서의 최종 qwen 프리필 크기를 줄인다.
 
 ### 5. RAG 코퍼스 준비
 
@@ -95,7 +132,7 @@ python3 -m venv .venv
 1. `pypdf`로 PDF 텍스트를 추출한다.
 2. 조항 패턴이 있으면 조항 단위로, 없으면 고정 길이로 청킹한다.
 3. Ollama `bge-m3`로 임베딩한다.
-4. `data/chroma/`에 Chroma 인덱스를 저장하고 `data/chroma_manifest.json`에 코퍼스 지문을 기록한다.
+4. `data/chroma_0_6/`에 Chroma 인덱스를 저장하고 `data/chroma_manifest.json`에 코퍼스 지문을 기록한다.
 5. 검색된 snippet과 위험 신호만 qwen에 전달해 3문장 이내 근거 기반 답변을 생성한다.
 
 코퍼스 파일이 바뀌면 manifest 지문이 달라져 다음 호출 때 인덱스를 재생성한다.
@@ -125,10 +162,19 @@ print(rag.check_disclosure_risk("3분기 실적 발표 전 내부 검토 자료"
 PY
 ```
 
+OpenCode 1.17.18 실측에서는 신형 `/api/session/.../prompt`가 MCP tool을 모델에
+전달하지 않았다. GUI/TUI 또는 `opencode serve`의 기존 `/session` 경로로 E2E를
+검증하고, 응답 모델이 `ollama/qwen3-instruct-16k`인지 반드시 확인한다.
+`opencode.json`은 로컬 Ollama와 MCP 4종만 허용하고 내장 Web/셸 도구 및 공유 기능을
+차단한다. 설정을 바꾼 뒤에는 `opencode debug config`로 적용 상태를 확인한다.
+
 ## 알아둘 것 (스파이크 검증 결과, 2026-07-03)
 
-- **CPU 전용 머신 성능**: 콜드 프리필 약 30 tok/s → 첫 요청 5분+ 걸릴 수 있음. Ollama 프롬프트 캐시가 데워진 뒤엔 30초~1분. **데모 전 워밍업 필수.**
-- **툴 개수 최소화**: 툴 스키마가 프리필 토큰을 늘려 응답이 느려진다. 꼭 필요한 툴만 등록.
+- **CPU 전용 머신 성능**: 콜드 프리필 ~30 tok/s → 첫 요청 5분+ 걸릴 수 있음. Ollama 프롬프트 캐시가 데워진 뒤엔 30초~1분. **데모 전 워밍업 필수.**
+- **툴 개수 최소화**: 툴 스키마가 프리필 토큰을 늘려 응답이 느려진다. 내장 tool을
+  비활성화하고 MCP 4종만 등록한다.
+- **긴 세션 분리**: 대화와 tool 결과가 누적되면 매 요청의 프리필이 다시 커진다.
+  워밍된 서버·모델은 유지하되 시연 시나리오별로 새 세션을 사용한다.
 - 스파이크에서 툴 호출 3/3 성공 (영어/한국어 요청 포함).
 
 ## 개발 규칙

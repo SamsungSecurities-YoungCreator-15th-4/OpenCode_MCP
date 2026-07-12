@@ -81,6 +81,32 @@ def test_verify_chain_valid_on_intact_chain(tmp_path):
     assert result == {"valid": True, "broken_at": None, "total_records": 5}
 
 
+def test_latest_record_matches_tool_and_input_hash(tmp_path):
+    db = _db(tmp_path)
+    logger.append("check_disclosure_risk", "원문", "요약", True, db_path=db)
+
+    assert logger.latest_record_matches(
+        " CHECK_DISCLOSURE_RISK ", "원문", db_path=db
+    )
+    assert not logger.latest_record_matches(
+        "check_disclosure_risk", "다른 원문", db_path=db
+    )
+    assert not logger.latest_record_matches("scan_sensitive_info", "원문", db_path=db)
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "input_text"),
+    [(None, "원문"), ("check_disclosure_risk", None), (1, "원문")],
+)
+def test_latest_record_matches_rejects_non_string_before_opening_db(
+    tmp_path, tool_name, input_text
+):
+    db = _db(tmp_path)
+
+    assert not logger.latest_record_matches(tool_name, input_text, db_path=db)
+    assert not (tmp_path / "audit.db").exists()
+
+
 # --- 5. 위변조 탐지 (이 tool의 존재 이유 ②, 시연 핵심) -----------------------
 
 

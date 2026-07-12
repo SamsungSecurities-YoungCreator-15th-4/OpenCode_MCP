@@ -24,6 +24,10 @@ _ACCOUNT_KEYWORD_WINDOW = 24
 # 하이픈/공백이 없으면 주변 키워드를 요구한다.
 _RRN_KEYWORD_WINDOW = 18
 
+# Luhn 체크섬에 실패한 카드형식 숫자도 주변에 카드 키워드가 있으면 버리지 않는다.
+# (미탐이 오탐보다 치명적 — 실제 유출 사례엔 오기입·가공된 번호도 흔하다)
+_CARD_KEYWORD_WINDOW = 24
+
 # summary/log_safe_summary에 타입별로 나열하는 마스킹 값의 최대 개수.
 # 대량 탐지 시 요약 문자열이 무한정 길어져 가독성이 떨어지거나 감사 로그 저장소의
 # 컬럼 길이 제한을 초과하는 걸 막기 위한 상한이다.
@@ -81,6 +85,11 @@ _RRN_KEYWORD_RE = re.compile(
     re.IGNORECASE,
 )
 
+_CARD_KEYWORD_RE = re.compile(
+    r"카드|결제|신용|체크|card|credit|debit|payment",
+    re.IGNORECASE,
+)
+
 # 금융상품 광고/고객 발송 문구에서 사람 검토가 필요한 금지·주의 표현
 _PROHIBITED_CLAIM_PATTERNS: list[tuple[str, str, str]] = [
     (
@@ -95,10 +104,17 @@ _PROHIBITED_CLAIM_PATTERNS: list[tuple[str, str, str]] = [
     ),
     (
         "no_loss",
-        r"(?:손실\s*(?:이\s*|은\s*)?(?:없음|제로)|무손실|손해\s*(?:가\s*|는\s*)?없음)",
+        # 없음(명사형)만이 아니라 "없는/없습니다" 활용형과 "가능성이 전혀 없는"류의
+        # 수식어 삽입도 잡는다. "손실 0.5%"처럼 수치가 이어지는 문장은 매칭하지 않는다.
+        r"(?:(?:원금\s*)?손실\s*(?:가능성|위험|우려)?\s*(?:이\s*|은\s*|가\s*|도\s*)?"
+        r"(?:전혀\s*)?(?:없[가-힣]*|제로)|무손실|손해\s*(?:가\s*|는\s*)?(?:전혀\s*)?없[가-힣]*)",
         "손실 가능성 축소 표현",
     ),
-    ("risk_free", r"(?:무위험|위험\s*(?:이\s*|은\s*)?(?:없음|제로))", "위험성 축소 표현"),
+    (
+        "risk_free",
+        r"(?:무위험|(?:위험|리스크)\s*(?:이\s*|은\s*|가\s*|도\s*)?(?:전혀\s*)?(?:없[가-힣]*|제로))",
+        "위험성 축소 표현",
+    ),
     ("high_return_stable", r"(?:안정적\s*)?고수익", "고수익 과장 가능 표현"),
     ("always_profit", r"(?:무조건|반드시|100%)\s*(?:수익|상승|오름)", "단정적 수익 표현"),
 ]
@@ -406,8 +422,13 @@ def scan_text(text: str | None) -> dict:
             continue
 
         digits = _digits(match.group())
-        if not _luhn_valid(digits):
-            continue
+        luhn_ok = _luhn_valid(digits)
+        if not luhn_ok:
+            # 체크섬 불일치라도 근처에 카드 키워드가 있으면 미탐 대신 낮은
+            # confidence로 남긴다. 키워드 없는 일련번호류는 기존대로 무시한다.
+            nearby = _context(text, match.start(), match.end(), _CARD_KEYWORD_WINDOW)
+            if not _CARD_KEYWORD_RE.search(nearby):
+                continue
 
         _add_finding(
             findings=findings,
@@ -418,7 +439,12 @@ def scan_text(text: str | None) -> dict:
             masked_value=_mask_card(match.group()),
             start=match.start(),
             end=match.end(),
-            reason="Luhn checksum 유효 카드번호 패턴",
+            confidence="high" if luhn_ok else "low",
+            reason=(
+                "Luhn checksum 유효 카드번호 패턴"
+                if luhn_ok
+                else "카드 키워드 주변의 카드형식 숫자(체크섬 불일치) — 사람 확인 필요"
+            ),
         )
 
     # 3. 전화번호
