@@ -31,7 +31,7 @@ def _cosine_similarity(distance: float) -> float:
 def _collection_names(client) -> set[str]:
     """Chroma 0.6의 문자열과 1.x의 Collection 반환을 모두 이름으로 정규화한다."""
     return {
-        str(item) if isinstance(item, str) else item.name
+        item if isinstance(item, str) else getattr(item, "name", str(item))
         for item in client.list_collections()
     }
 

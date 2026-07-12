@@ -316,9 +316,9 @@ def test_collection_names_supports_chroma_0_6_and_1_x_results():
 
     class FakeClient:
         def list_collections(self):
-            return ["from-string", CollectionObject()]
+            return ["from-string", CollectionObject(), 123]
 
-    assert _collection_names(FakeClient()) == {"from-string", "from-object"}
+    assert _collection_names(FakeClient()) == {"from-string", "from-object", "123"}
 
 
 def test_chroma_anonymized_telemetry_is_disabled():
