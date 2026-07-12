@@ -112,7 +112,10 @@ def test_pdf_symlink_to_non_pdf_target_is_blocked(tmp_path):
     secret = tmp_path / "secret.txt"
     secret.write_text("sensitive configuration", encoding="utf-8")
     disguised_pdf = tmp_path / "attachment.pdf"
-    disguised_pdf.symlink_to(secret)
+    try:
+        disguised_pdf.symlink_to(secret)
+    except OSError:
+        pytest.skip("심볼릭 링크 생성이 지원되지 않거나 권한이 부족합니다.")
 
     result = _run_plugin(disguised_pdf)
 
