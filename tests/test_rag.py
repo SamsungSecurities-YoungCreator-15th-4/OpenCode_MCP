@@ -12,6 +12,7 @@ from compliance.rag.corpus import corpus_fingerprint, load_corpus_chunks
 from compliance.rag.embedder import embed_texts
 from compliance.rag.generator import _clean_answer
 from compliance.rag.hybrid_search import reciprocal_rank_fusion
+from compliance.rag.vector_store import _LOCAL_SETTINGS, _collection_names
 
 # 미공개중요정보 8기준과 무관한 짧은 가짜 조항들(category는 항상 None로 남는다).
 DUMMY_CORPUS = """
@@ -305,6 +306,23 @@ def test_vector_search_tolerates_none_distances(monkeypatch):
     assert hits[0]["chunk_id"] == "chunk-1"
     assert "vector_distance" not in hits[0]
     assert "vector_similarity" not in hits[0]
+
+
+def test_collection_names_supports_chroma_0_6_and_1_x_results():
+    """0.6은 문자열, 1.x는 Collection 객체를 반환하므로 둘 다 지원한다."""
+
+    class CollectionObject:
+        name = "from-object"
+
+    class FakeClient:
+        def list_collections(self):
+            return ["from-string", CollectionObject()]
+
+    assert _collection_names(FakeClient()) == {"from-string", "from-object"}
+
+
+def test_chroma_anonymized_telemetry_is_disabled():
+    assert _LOCAL_SETTINGS.anonymized_telemetry is False
 
 
 # --- 4. hybrid_search 반환 항목이 요구된 키를 모두 포함 -----------------------

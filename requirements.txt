@@ -1,7 +1,12 @@
 mcp[cli]==1.28.1
 
 # RAG 파이프라인 (준법감시 규정 검색)
-chromadb==1.5.9
+# CVE-2026-45829 affects chromadb >=1.0.0,<=1.5.9 and has no patched release.
+# 0.6.3 is the latest release outside the affected range.
+chromadb==0.6.3
+# Chroma 0.6 calls the PostHog 3.x capture API. Telemetry is disabled in code,
+# and this pin also prevents incompatible 4.x+ clients from emitting errors.
+posthog==3.25.0
 rank_bm25==0.2.2
 pypdf==6.14.2
 # httpx는 mcp 의존성으로 이미 포함 — bge-m3 임베딩은 Ollama 경유라 별도 추가 없음.

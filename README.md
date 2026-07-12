@@ -82,6 +82,13 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ```
 
+`chromadb`는 CVE-2026-45829의 영향 범위(`1.0.0`~`1.5.9`) 밖인 `0.6.3`으로
+고정한다. 이 서비스는 Chroma API 서버를 열지 않고 로컬 `PersistentClient`만 사용하지만,
+패치 버전이 없는 critical 경고를 의존성 수준에서도 제거하기 위한 조치다. Chroma 1.x가 만든
+기존 `data/chroma/` 인덱스는 0.6.3과 역호환되지 않으므로 사용하지 않으며, 첫 RAG 호출 때
+`data/chroma_0_6/`에 로컬 코퍼스를 자동으로 다시 인덱싱한다. Chroma 익명 텔레메트리도
+비활성화하며 외부 Chroma 서버나 임베딩 함수를 사용하지 않는다.
+
 `opencode.json`의 MCP command가 `.venv/bin/python` 상대경로를 사용하므로, venv는 반드시 레포 루트에 `.venv` 이름으로 만들고 OpenCode도 레포 루트에서 실행한다.
 (Windows는 WSL 사용을 권장한다. 네이티브 Windows에서 쓰려면 `opencode.json`의 경로를 `.venv\Scripts\python.exe`로 로컬에서 수정해야 하며, 이 구성은 검증되지 않았다.)
 
@@ -125,7 +132,7 @@ CPU 환경에서 `check_disclosure_risk`의 내부 qwen 답변 생성과 OpenCod
 1. `pypdf`로 PDF 텍스트를 추출한다.
 2. 조항 패턴이 있으면 조항 단위로, 없으면 고정 길이로 청킹한다.
 3. Ollama `bge-m3`로 임베딩한다.
-4. `data/chroma/`에 Chroma 인덱스를 저장하고 `data/chroma_manifest.json`에 코퍼스 지문을 기록한다.
+4. `data/chroma_0_6/`에 Chroma 인덱스를 저장하고 `data/chroma_manifest.json`에 코퍼스 지문을 기록한다.
 5. 검색된 snippet과 위험 신호만 qwen에 전달해 3문장 이내 근거 기반 답변을 생성한다.
 
 코퍼스 파일이 바뀌면 manifest 지문이 달라져 다음 호출 때 인덱스를 재생성한다.
