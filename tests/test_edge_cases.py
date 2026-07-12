@@ -189,7 +189,8 @@ def test_principal_guarantee_negation_only_handles_specific_particles():
 
 @pytest.mark.xfail(
     strict=True,
-    reason="미탐: 국제표기(+82) 휴대전화가 탐지되지 않는다. 미탐은 오탐보다 치명적이다.",
+    reason="미탐: _PHONE_RE가 0으로 시작하는 국내 형식만 허용하고 +82 국가번호를 "
+    "국내 0으로 정규화하지 않아 국제표기 휴대전화를 탐지하지 못한다.",
 )
 def test_international_format_phone_is_detected():
     assert scan_text("연락처 +82-10-1234-5678 입니다")["data"]["findings"]
@@ -197,7 +198,8 @@ def test_international_format_phone_is_detected():
 
 @pytest.mark.xfail(
     strict=True,
-    reason="미탐: 점(.)으로 구분한 휴대전화가 탐지되지 않는다.",
+    reason="미탐: _PHONE_RE의 번호 구분자가 하이픈 또는 공백([-\\s])으로 "
+    "제한되어 점(.) 구분 휴대전화를 탐지하지 못한다.",
 )
 def test_dot_separated_phone_is_detected():
     assert scan_text("연락처 010.1234.5678")["data"]["findings"]
@@ -205,8 +207,8 @@ def test_dot_separated_phone_is_detected():
 
 @pytest.mark.xfail(
     strict=True,
-    reason="미탐: re.ASCII 때문에 전각 숫자 전화번호가 탐지되지 않는다. "
-    "입력 정규화(NFKC)가 필요하다.",
+    reason="미탐: _PHONE_RE가 re.ASCII의 \\d를 사용하고 입력을 NFKC 정규화하지 "
+    "않아 전각 숫자 전화번호를 탐지하지 못한다.",
 )
 def test_fullwidth_digit_phone_is_detected():
     assert scan_text("연락처 ０１０-１２３４-５６７８")["data"]["findings"]
@@ -293,8 +295,8 @@ def test_pipe_to_slash_tampering_is_detected(tmp_path):
 
 @pytest.mark.xfail(
     strict=True,
-    reason="위변조 미탐: tool_name도 같은 _sanitize() 경로를 타 'scan|evil'→'scan/evil' "
-    "변조가 탐지되지 않는다.",
+    reason="위변조 미탐: tool_name 원본은 DB에 저장하지만 해시 계산 전 _sanitize()가 "
+    "'|'를 '/'로 치환해 'scan|evil'과 'scan/evil'의 record_hash가 같아진다.",
 )
 def test_tool_name_pipe_tampering_is_detected(tmp_path):
     db = _db(tmp_path)
@@ -390,8 +392,8 @@ def stub_rag(monkeypatch):
 
 
 def test_similarity_exactly_at_threshold_passes(stub_rag):
-    """임계값은 >= 비교다. 정확히 0.35면 통과한다 (경계 포함)."""
-    stub_rag["vector_similarity"] = 0.35
+    """임계값은 >= 비교다. 정확히 0.49면 통과한다 (경계 포함)."""
+    stub_rag["vector_similarity"] = 0.49
 
     result = mcp_server.search_compliance_rule("준법감시인 사전확인")
 
@@ -399,7 +401,7 @@ def test_similarity_exactly_at_threshold_passes(stub_rag):
 
 
 def test_similarity_just_below_threshold_is_cut(stub_rag):
-    stub_rag["vector_similarity"] = 0.3499
+    stub_rag["vector_similarity"] = 0.4899
 
     result = mcp_server.search_compliance_rule("준법감시인 사전확인")
 

@@ -19,7 +19,7 @@ from compliance.schema import fail, ok
 
 _DEFAULT_TOP_K = 5
 DEFAULT_VECTOR_SIMILARITY_THRESHOLD = float(
-    os.environ.get("RAG_VECTOR_SIMILARITY_THRESHOLD", "0.35")
+    os.environ.get("RAG_VECTOR_SIMILARITY_THRESHOLD", "0.49")
 )
 _INDEX_MANIFEST = Path(os.environ.get("RAG_INDEX_MANIFEST", "data/chroma_manifest.json"))
 _GENERATE_ANSWER = os.environ.get("RAG_GENERATE_ANSWER", "1").lower() not in {
