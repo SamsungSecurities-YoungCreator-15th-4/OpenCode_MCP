@@ -5,6 +5,8 @@ import path from "node:path"
 const READ_PREFIX = "Called the Read tool with the following input:"
 const ROOT_PREFIX = "opencode-compliance-pdf-"
 const ROOT_PATTERN = /^opencode-compliance-pdf-(\d+)-/
+const COMPLIANCE_FILE_TOOLS = /(?:^|_)(?:scan_sensitive_info|check_disclosure_risk)$/
+const ALIAS_BASENAME = /^attachment-\d+\.pdf$/
 
 function sessionDir(root, sessionID) {
   const safeSession = String(sessionID || "session").replace(/[^A-Za-z0-9_-]/g, "_")
@@ -173,6 +175,24 @@ export async function CompliancePdfAttachmentPlugin() {
       })
       next.splice(Math.min(firstPdf, next.length), 0, replacement)
       output.parts.splice(0, output.parts.length, ...next)
+    },
+    "tool.execute.before": async (input, output) => {
+      // 소형 모델이 브릿지 경로의 난수 부분을 옮겨 적다 오타를 내면(예: Za19N4→Za19N14)
+      // tool이 파일 없음으로 실패한다. 우리 임시 네임스페이스를 가리키는 게 분명한
+      // 경로만, 실제 세션 디렉터리의 같은 basename으로 보정한다.
+      if (!COMPLIANCE_FILE_TOOLS.test(input?.tool || "")) return
+      const args = output?.args
+      const requested = args?.file_path
+      if (typeof requested !== "string" || !requested.includes(ROOT_PREFIX)) return
+      try {
+        await fs.access(requested)
+        return
+      } catch {}
+      const base = path.basename(requested)
+      if (!ALIAS_BASENAME.test(base)) return
+      const candidate = path.join(sessionDir(root, input?.sessionID), base)
+      if (candidate === requested) return
+      if (await existingPdf(candidate)) args.file_path = candidate
     },
     event: async ({ event }) => {
       if (event?.type !== "session.idle" && event?.type !== "session.deleted") return
