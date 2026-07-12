@@ -3,16 +3,20 @@
 임베딩은 embedder(bge-m3/Ollama)로 우리가 직접 만들어 넣는다 →
 Chroma 기본 임베딩 함수(외부 모델 다운로드)를 쓰지 않는다(폐쇄망).
 
-저장 경로 기본값은 data/chroma/. 경로가 None 또는 ":memory:"이면
+저장 경로 기본값은 data/chroma_0_6/. 경로가 None 또는 ":memory:"이면
 영속화 없이 인메모리(EphemeralClient)로 동작한다(테스트용).
 """
 
 import os
 
 import chromadb
+from chromadb.config import Settings
 
-DEFAULT_PATH = os.environ.get("CHROMA_PATH", "data/chroma")
+# Chroma 1.x 인덱스는 0.6.3과 역호환되지 않는다. CVE-2026-45829 대응으로
+# 0.6.3을 사용하므로 기존 data/chroma와 분리해 첫 검색 때 안전하게 재구성한다.
+DEFAULT_PATH = os.environ.get("CHROMA_PATH", "data/chroma_0_6")
 COLLECTION = "compliance_rules"
+_LOCAL_SETTINGS = Settings(anonymized_telemetry=False)
 
 # Chroma 메타데이터 값은 None을 허용하지 않으므로 category=None은 ""로 저장하고
 # 조회 시 다시 None으로 복원한다.
@@ -22,6 +26,14 @@ _META_KEYS = ("source", "article", "article_title", "chunk_id", "category", "fil
 def _cosine_similarity(distance: float) -> float:
     """Chroma cosine distance를 사람이 해석하기 쉬운 유사도로 변환한다."""
     return max(-1.0, min(1.0, 1.0 - distance))
+
+
+def _collection_names(client) -> set[str]:
+    """Chroma 0.6의 문자열과 1.x의 Collection 반환을 모두 이름으로 정규화한다."""
+    return {
+        item if isinstance(item, str) else getattr(item, "name", str(item))
+        for item in client.list_collections()
+    }
 
 
 def _to_meta(chunk: dict) -> dict:
@@ -57,12 +69,12 @@ class VectorStore:
         reset: bool = False,
     ):
         if path in (None, ":memory:"):
-            client = chromadb.EphemeralClient()
+            client = chromadb.EphemeralClient(settings=_LOCAL_SETTINGS)
         else:
-            client = chromadb.PersistentClient(path=path)
+            client = chromadb.PersistentClient(path=path, settings=_LOCAL_SETTINGS)
         # reset=True면 기존 컬렉션을 지우고 새로 만든다 — 영속 저장소에 과거 청크가
         # 남아 BM25 인덱스(현재 청크만)와 어긋나는 하이브리드 검색 불일치를 방지.
-        if reset and collection in {c.name for c in client.list_collections()}:
+        if reset and collection in _collection_names(client):
             client.delete_collection(name=collection)
         self._collection = client.get_or_create_collection(
             name=collection, metadata={"hnsw:space": "cosine"}

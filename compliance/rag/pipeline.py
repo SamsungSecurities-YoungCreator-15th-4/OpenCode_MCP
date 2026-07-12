@@ -22,7 +22,7 @@ class _Pipeline:
     def build_index(self, chunks: list[dict], chroma_path: str | None = None) -> None:
         """청크를 임베딩·Chroma 적재하고 BM25 인덱스를 구성한다.
 
-        chroma_path=None이면 vector_store 기본 경로(data/chroma)를 쓴다.
+        chroma_path=None이면 vector_store 기본 경로(data/chroma_0_6)를 쓴다.
         테스트에서는 ":memory:"를 넘겨 영속화 없이 인메모리로 돌린다.
 
         build_index는 "전체 재구성" 의미다 → reset=True로 기존 컬렉션을 비우고
