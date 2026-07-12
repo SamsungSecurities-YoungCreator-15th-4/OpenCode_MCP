@@ -108,6 +108,21 @@ def test_data_only_pdf_fails_closed_without_claiming_it_was_read():
 
 
 @pytest.mark.skipif(NODE is None, reason="Node.js is required by OpenCode")
+def test_pdf_symlink_to_non_pdf_target_is_blocked(tmp_path):
+    secret = tmp_path / "secret.txt"
+    secret.write_text("sensitive configuration", encoding="utf-8")
+    disguised_pdf = tmp_path / "attachment.pdf"
+    disguised_pdf.symlink_to(secret)
+
+    result = _run_plugin(disguised_pdf)
+
+    assert all(part["type"] != "file" for part in result["parts"])
+    assert "BLOCKED" in result["text"]
+    assert result.get("alias") is None
+    assert str(secret) not in result["text"]
+
+
+@pytest.mark.skipif(NODE is None, reason="Node.js is required by OpenCode")
 def test_pdf_bridge_preserves_non_pdf_attachment_context(tmp_path):
     pdf = tmp_path / "검토.pdf"
     txt = tmp_path / "참고.txt"
