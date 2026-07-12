@@ -63,6 +63,7 @@ async function existingPdf(value) {
   if (typeof value !== "string" || path.extname(value).toLowerCase() !== ".pdf") return
   try {
     const real = await fs.realpath(value)
+    if (path.extname(real).toLowerCase() !== ".pdf") return
     const stat = await fs.stat(real)
     return stat.isFile() ? real : undefined
   } catch {
