@@ -219,10 +219,11 @@ def main() -> int:
     threshold = args.threshold
     store = VectorStore()
     count = store.count()
-    if count == 0:
+    if count < 5:
         print(
-            f"오류: Chroma collection={COLLECTION!r}에 문서가 없습니다. "
-            "먼저 코퍼스를 인제스트하세요.",
+            f"오류: Chroma collection={COLLECTION!r}의 문서가 {count}개입니다. "
+            "top-5 임계값 측정에는 최소 5개 청크가 필요하므로 코퍼스를 "
+            "먼저 인제스트하세요.",
             file=sys.stderr,
         )
         return 1
