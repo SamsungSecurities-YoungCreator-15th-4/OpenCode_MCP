@@ -1,0 +1,6 @@
+name: OpenCode MCP JavaScript analysis
+
+# OpenCode loads project plugins from a hidden directory. CodeQL automatic
+# discovery skips it, so include the runtime plugin path explicitly.
+paths:
+  - .opencode/plugins
