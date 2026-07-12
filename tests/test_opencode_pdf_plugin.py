@@ -208,6 +208,79 @@ const path = require("node:path")
 
 
 @pytest.mark.skipif(NODE is None, reason="Node.js is required by OpenCode")
+def test_tool_execute_before_corrects_mistyped_alias_path(tmp_path):
+    pdf = tmp_path / "경로오타.pdf"
+    pdf.write_bytes(b"%PDF-1.4\nsynthetic test\n%%EOF")
+    script = r"""
+const fs = require("node:fs")
+const path = require("node:path")
+;(async () => {
+  const source = fs.readFileSync(process.argv[1], "utf8")
+  const module = await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`)
+  const hooks = await module.CompliancePdfAttachmentPlugin({})
+  const pdf = process.argv[2]
+  const parts = [
+    {
+      id: "read",
+      type: "text",
+      synthetic: true,
+      text: `Called the Read tool with the following input: ${JSON.stringify({ filePath: pdf })}`,
+    },
+    { id: "pdf", type: "file", mime: "application/pdf", filename: path.basename(pdf) },
+  ]
+  await hooks["chat.message"]({ sessionID: "ses_typo" }, { parts })
+  const alias = parts.map((part) => part.text || "").join("\n").match(/MCP file_path: (.+)/)[1]
+  const sessionSegment = path.basename(path.dirname(alias))
+  const rootName = path.basename(path.dirname(path.dirname(alias)))
+
+  const run = async (tool, sessionID, filePath) => {
+    const args = { file_path: filePath }
+    await hooks["tool.execute.before"]({ tool, sessionID }, { args })
+    return args.file_path
+  }
+  const scan = "compliance-assistant_scan_sensitive_info"
+  const check = "compliance-assistant_check_disclosure_risk"
+  const typoRoot = alias.replace(rootName, `${rootName}1`)
+  const typoSession = alias.replace(sessionSegment, `${sessionSegment}X`)
+  const outsidePath = path.join(path.dirname(pdf), "attachment-1.pdf")
+
+  const results = {
+    typoRootCorrected: await run(scan, "ses_typo", typoRoot),
+    typoSessionCorrected: await run(check, "ses_typo", typoSession),
+    validUntouched: await run(scan, "ses_typo", alias),
+    outsideNamespaceUntouched: await run(scan, "ses_typo", outsidePath),
+    otherToolUntouched: await run("read", "ses_typo", typoRoot),
+    otherBasenameUntouched: await run(scan, "ses_typo", path.join(path.dirname(typoRoot), "other.pdf")),
+    missingAttachmentUntouched: await run(scan, "ses_typo", typoRoot.replace("attachment-1", "attachment-9")),
+  }
+  await hooks.dispose()
+  console.log(JSON.stringify({ alias, typoRoot, typoSession, outsidePath, results }))
+})().catch((error) => {
+  console.error(error)
+  process.exit(1)
+})
+"""
+    result = subprocess.run(
+        [NODE, "-e", script, str(PLUGIN), str(pdf)],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    data = json.loads(result.stdout)
+    alias = data["alias"]
+    results = data["results"]
+
+    assert results["typoRootCorrected"] == alias
+    assert results["typoSessionCorrected"] == alias
+    assert results["validUntouched"] == alias
+    assert results["outsideNamespaceUntouched"] == data["outsidePath"]
+    assert results["otherToolUntouched"] == data["typoRoot"]
+    assert results["otherBasenameUntouched"].endswith("other.pdf")
+    assert "attachment-9" in results["missingAttachmentUntouched"]
+
+
+@pytest.mark.skipif(NODE is None, reason="Node.js is required by OpenCode")
 def test_non_pdf_parts_are_unchanged():
     script = r"""
 const fs = require("node:fs")
