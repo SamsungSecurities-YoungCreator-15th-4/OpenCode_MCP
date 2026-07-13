@@ -189,8 +189,8 @@ def test_principal_guarantee_negation_only_handles_specific_particles():
 
 @pytest.mark.xfail(
     strict=True,
-    reason="미탐: _PHONE_RE가 0으로 시작하는 국내 형식만 허용하고 +82 국가번호를 "
-    "국내 0으로 정규화하지 않아 국제표기 휴대전화를 탐지하지 못한다.",
+    reason="검증 대상: +82 국제표기 휴대전화 탐지. 근본 원인: _PHONE_RE가 0으로 "
+    "시작하는 국내 형식만 허용하고 +82를 국내 0으로 정규화하지 않는다. 영향도: 미탐.",
 )
 def test_international_format_phone_is_detected():
     assert scan_text("연락처 +82-10-1234-5678 입니다")["data"]["findings"]
@@ -198,8 +198,8 @@ def test_international_format_phone_is_detected():
 
 @pytest.mark.xfail(
     strict=True,
-    reason="미탐: _PHONE_RE의 번호 구분자가 하이픈 또는 공백([-\\s])으로 "
-    "제한되어 점(.) 구분 휴대전화를 탐지하지 못한다.",
+    reason="검증 대상: 점(.) 구분 휴대전화 탐지. 근본 원인: _PHONE_RE의 번호 "
+    "구분자가 하이픈 또는 공백([-\\s])으로 제한된다. 영향도: 미탐.",
 )
 def test_dot_separated_phone_is_detected():
     assert scan_text("연락처 010.1234.5678")["data"]["findings"]
@@ -207,8 +207,8 @@ def test_dot_separated_phone_is_detected():
 
 @pytest.mark.xfail(
     strict=True,
-    reason="미탐: _PHONE_RE가 re.ASCII의 \\d를 사용하고 입력을 NFKC 정규화하지 "
-    "않아 전각 숫자 전화번호를 탐지하지 못한다.",
+    reason="검증 대상: 전각 숫자 전화번호 탐지. 근본 원인: _PHONE_RE가 re.ASCII의 "
+    "\\d를 사용하고 입력을 NFKC 정규화하지 않는다. 영향도: 미탐.",
 )
 def test_fullwidth_digit_phone_is_detected():
     assert scan_text("연락처 ０１０-１２３４-５６７８")["data"]["findings"]
@@ -273,10 +273,9 @@ def test_result_summary_rescan_mangles_legitimate_summaries(tmp_path):
 
 @pytest.mark.xfail(
     strict=True,
-    reason="위변조 미탐: _sanitize()가 해시 직전 '|'를 '/'로 치환하지만 DB에는 원본을 "
-    "저장한다. 따라서 저장된 'a|b'를 'a/b'로 바꿔도 record_hash가 그대로라 "
-    "verify_chain이 valid=True를 반환한다. 길이 프리픽스나 JSON 직렬화로 "
-    "해시 입력을 모호하지 않게 만들어야 한다.",
+    reason="검증 대상: result_summary의 '|'→'/' 수정 탐지. 근본 원인: _sanitize()가 "
+    "해시 직전 '|'를 '/'로 치환하지만 DB에는 원본을 저장해 두 값의 record_hash가 "
+    "같다. 영향도: 수정 탐지 기능 누락.",
 )
 def test_pipe_to_slash_tampering_is_detected(tmp_path):
     db = _db(tmp_path)
@@ -295,8 +294,9 @@ def test_pipe_to_slash_tampering_is_detected(tmp_path):
 
 @pytest.mark.xfail(
     strict=True,
-    reason="위변조 미탐: tool_name 원본은 DB에 저장하지만 해시 계산 전 _sanitize()가 "
-    "'|'를 '/'로 치환해 'scan|evil'과 'scan/evil'의 record_hash가 같아진다.",
+    reason="검증 대상: tool_name의 '|'→'/' 수정 탐지. 근본 원인: 원본은 DB에 "
+    "저장하지만 해시 계산 전 _sanitize()가 두 값을 동일하게 정규화한다. "
+    "영향도: 수정 탐지 기능 누락.",
 )
 def test_tool_name_pipe_tampering_is_detected(tmp_path):
     db = _db(tmp_path)

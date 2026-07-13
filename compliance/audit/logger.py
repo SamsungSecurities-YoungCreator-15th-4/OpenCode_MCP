@@ -1,7 +1,8 @@
-"""위변조 불가 감사 로그 — SQLite 해시 체인.
+"""수정·삭제 탐지용 감사 로그 — SQLite 해시 체인.
 
-각 레코드는 직전 레코드의 record_hash를 prev_hash로 품는다. 한 줄이라도 사후에
-바뀌면 그 뒤 모든 record_hash가 어긋나 위변조가 즉시 탐지된다(블록체인과 같은 원리).
+각 레코드는 직전 레코드의 record_hash를 prev_hash로 품는다. 일반적인 사후 수정·삭제는
+record_hash 재계산과 prev_hash 연결 검증으로 탐지한다. 구분자 정규화 충돌의 알려진
+예외는 tests/test_edge_cases.py의 strict xfail로 관리한다.
 
 원칙(팀 확정):
 - 원문·민감값은 저장하지 않는다. input_text는 즉시 SHA-256으로만 남기고 버린다.
