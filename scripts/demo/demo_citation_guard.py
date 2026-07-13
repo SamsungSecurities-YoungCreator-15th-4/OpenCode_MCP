@@ -30,7 +30,11 @@ def main() -> int:
     with patch.object(rag, "_generate_answer", return_value=(FAKE_ANSWER, generation)):
         result = rag.check_disclosure_risk(QUERY)
 
-    data = result["data"]
+    if not result.get("ok"):
+        print(f"[실행 실패] RAG 실행 중 오류가 발생했습니다: {result.get('error')}")
+        return 1
+
+    data = result.get("data", {})
     if not data.get("threshold_passed"):
         print("[실행 실패] 규정 질의가 검색 임계값을 통과하지 못해 인용 검증까지 진행되지 않았습니다.")
         return 1

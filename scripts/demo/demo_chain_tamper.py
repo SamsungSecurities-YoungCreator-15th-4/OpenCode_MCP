@@ -25,11 +25,13 @@ def _row_count(db_path: Path) -> int:
 
 def _backup(source_path: Path, destination_path: Path) -> None:
     source = sqlite3.connect(f"{source_path.resolve().as_uri()}?mode=ro", uri=True)
-    destination = sqlite3.connect(destination_path)
     try:
-        source.backup(destination)
+        destination = sqlite3.connect(destination_path)
+        try:
+            source.backup(destination)
+        finally:
+            destination.close()
     finally:
-        destination.close()
         source.close()
 
 
