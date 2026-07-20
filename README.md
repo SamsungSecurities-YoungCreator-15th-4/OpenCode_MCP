@@ -82,6 +82,10 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ```
 
+위 명령은 OpenCode에서 MCP 서버를 실행하기 위한 **런타임 의존성**만 설치한다.
+lint와 단위 테스트까지 실행하는 개발·검증 환경은 아래 `검증` 절차에서
+`requirements-dev.txt`를 설치한다.
+
 `chromadb`는 CVE-2026-45829의 영향 범위(`1.0.0`~`1.5.9`) 밖인 `0.6.3`으로
 고정한다. 이 서비스는 Chroma API 서버를 열지 않고 로컬 `PersistentClient`만 사용하지만,
 패치 버전이 없는 critical 경고를 의존성 수준에서도 제거하기 위한 조치다. Chroma 1.x가 만든
@@ -139,6 +143,17 @@ CPU 환경에서 `check_disclosure_risk`의 내부 qwen 답변 생성과 OpenCod
 qwen 답변 생성에 실패해도 tool은 검색 snippet과 결정론 summary를 반환하도록 fallback한다.
 
 ## 검증
+
+개발·검증 의존성은 런타임용 `requirements.txt`와 분리된
+`requirements-dev.txt`로 설치한다. 이 파일은 런타임 의존성도 함께 포함한다.
+
+```bash
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/ruff check .
+# → All checks passed!
+.venv/bin/pytest
+# → 173 passed, 5 xfailed
+```
 
 ```bash
 # 1. MCP 서버 단독 (OpenCode 없이) — 툴 4개 목록 조회 후 모두 호출

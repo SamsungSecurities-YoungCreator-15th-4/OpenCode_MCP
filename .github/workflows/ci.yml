@@ -21,7 +21,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install ruff
+      - run: pip install -r requirements-dev.txt
       # 파이썬 코드가 아직 없는 초기 단계에서도 CI가 깨지지 않도록 ruff check . 사용
       - run: ruff check .
 
@@ -35,9 +35,7 @@ jobs:
           python-version: "3.11"
           cache: pip
       - name: Install dependencies
-        run: |
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip install pytest
+        run: pip install -r requirements-dev.txt
       # 테스트가 아직 없으면(수집 0건, exit code 5) 통과로 처리한다.
       - name: Run pytest
         run: |
