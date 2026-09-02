@@ -8,5 +8,5 @@ chromadb==0.6.3
 # and this pin also prevents incompatible 4.x+ clients from emitting errors.
 posthog==3.25.0
 rank_bm25==0.2.2
-pypdf==6.14.2
+pypdf==6.16.1
 # httpx는 mcp 의존성으로 이미 포함 — bge-m3 임베딩은 Ollama 경유라 별도 추가 없음.
