@@ -1,4 +1,4 @@
-mcp[cli]==1.28.1
+mcp[cli]==1.30.0
 
 # RAG 파이프라인 (준법감시 규정 검색)
 # CVE-2026-45829 affects chromadb >=1.0.0,<=1.5.9 and has no patched release.
